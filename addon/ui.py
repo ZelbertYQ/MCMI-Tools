@@ -20,6 +20,7 @@ from ..blender_export.ini_maker import IniMaker
 from ..extract_frame_data.extract_frame_data import extract_frame_data
 
 from .modules.toolbox.ui import *
+from ..language import tr
 
 
 def add_row_with_error_handler(layout, cfg, setting_names):
@@ -74,14 +75,19 @@ class WWMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
         cfg = context.scene.wwmi_tools_settings
         layout = self.layout
 
+        prefs = addon_updater_ops.get_user_preferences(context)
+        if prefs:
+            row = layout.row(align=True)
+            row.prop(prefs, 'ui_language', expand=True)
+
         if bpy.app.version[:2] == (4, 2):
             layout.alert = True
-            layout.label(text="Blender 4.2 is not supported!", icon="ERROR")
-            layout.label(text="This Blender version cannot handle custom split normals properly due to regression.")
+            layout.label(text=tr('blender_42_warning'), icon="ERROR")
+            layout.label(text=tr('blender_42_detail'))
             layout.alert = False
             return
 
-        layout.row().prop(cfg, 'tool_mode')
+        layout.row().prop(cfg, 'tool_mode', text=tr('tool_mode'))
 
         if cfg.tool_mode == 'TOOLS_MODE':
             self.draw_menu_tools_mode(context)
@@ -99,15 +105,15 @@ class WWMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
         cfg = context.scene.wwmi_tools_settings
         layout = self.layout
 
-        layout.row().operator(WWMI_ApplyModifierForObjectWithShapeKeysOperator.bl_idname)
-        layout.row().operator(WWMI_MergeVertexGroups.bl_idname)
-        layout.row().operator(WWMI_FillGapsInVertexGroups.bl_idname)
-        layout.row().operator(WWMI_RemoveUnusedVertexGroups.bl_idname)
-        layout.row().operator(WWMI_RemoveAllVertexGroups.bl_idname)
-        layout.row().operator(WWMI_CreateMergedObject.bl_idname)
-        layout.row().operator(WWMI_ApplyMergedObjectSculpt.bl_idname)
-        layout.row().operator(WWMI_ApplyMergedObjectSculptWithShapekeys.bl_idname)
-        layout.row().operator(WWMI_ConvertVertexColors.bl_idname)
+        layout.row().operator(WWMI_ApplyModifierForObjectWithShapeKeysOperator.bl_idname, text=tr('apply_modifier_sk'))
+        layout.row().operator(WWMI_MergeVertexGroups.bl_idname, text=tr('merge_vg'))
+        layout.row().operator(WWMI_FillGapsInVertexGroups.bl_idname, text=tr('fill_gaps_vg'))
+        layout.row().operator(WWMI_RemoveUnusedVertexGroups.bl_idname, text=tr('remove_unused_vg'))
+        layout.row().operator(WWMI_RemoveAllVertexGroups.bl_idname, text=tr('remove_all_vg'))
+        layout.row().operator(WWMI_CreateMergedObject.bl_idname, text=tr('create_merged'))
+        layout.row().operator(WWMI_ApplyMergedObjectSculpt.bl_idname, text=tr('apply_merged_sculpt'))
+        layout.row().operator(WWMI_ApplyMergedObjectSculptWithShapekeys.bl_idname, text=tr('apply_merged_sculpt_sk'))
+        layout.row().operator(WWMI_ConvertVertexColors.bl_idname, text=tr('convert_vertex_colors'))
         
 
     def draw_menu_export_mod(self, context):
@@ -117,42 +123,42 @@ class WWMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
         layout.row()
         
         row = add_row_with_error_handler(layout, cfg, 'component_collection')
-        row.prop(cfg, 'component_collection')
+        row.prop(cfg, 'component_collection', text=tr('component_collection'))
 
         row = add_row_with_error_handler(layout, cfg, 'object_source_folder')
-        row.prop(cfg, 'object_source_folder')
+        row.prop(cfg, 'object_source_folder', text=tr('object_source_folder'))
 
         row = add_row_with_error_handler(layout, cfg, 'mod_output_folder')
-        row.prop(cfg, 'mod_output_folder')
+        row.prop(cfg, 'mod_output_folder', text=tr('mod_output_folder'))
         
-        layout.row().prop(cfg, 'mod_skeleton_type')
+        layout.row().prop(cfg, 'mod_skeleton_type', text=tr('mod_skeleton_type'))
 
         if not cfg.partial_export:
 
             layout.row()
 
-            layout.row().prop(cfg, 'mirror_mesh')
-            layout.row().prop(cfg, 'apply_all_modifiers')
-            layout.row().prop(cfg, 'copy_textures')
+            layout.row().prop(cfg, 'mirror_mesh', text=tr('mirror_mesh'))
+            layout.row().prop(cfg, 'apply_all_modifiers', text=tr('apply_all_modifiers'))
+            layout.row().prop(cfg, 'copy_textures', text=tr('copy_textures'))
 
             col = layout.column(align=True)
             grid = col.grid_flow(columns=2, align=True)
             grid.alignment = 'LEFT'
-            grid.prop(cfg, 'write_ini')
+            grid.prop(cfg, 'write_ini', text=tr('write_ini'))
             if cfg.write_ini:
-                grid.prop(cfg, 'comment_ini')
+                grid.prop(cfg, 'comment_ini', text=tr('comment_ini'))
                     
             layout.row()
             layout.row()
 
             if bpy.app.version >= (3, 5):
                 row = layout.row()
-                row.prop(cfg, 'ignore_nested_collections')
+                row.prop(cfg, 'ignore_nested_collections', text=tr('ignore_nested_collections'))
                 if not cfg.ignore_nested_collections:
-                    row.prop(cfg, 'ignore_hidden_collections')
+                    row.prop(cfg, 'ignore_hidden_collections', text=tr('ignore_hidden_collections'))
                 
-            layout.row().prop(cfg, 'ignore_hidden_objects')
-            layout.row().prop(cfg, 'ignore_muted_shape_keys')
+            layout.row().prop(cfg, 'ignore_hidden_objects', text=tr('ignore_hidden_objects'))
+            layout.row().prop(cfg, 'ignore_muted_shape_keys', text=tr('ignore_muted_shape_keys'))
 
 
     def draw_menu_import_object(self, context):
@@ -162,17 +168,17 @@ class WWMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
         layout.row()
 
         row = add_row_with_error_handler(layout, cfg, 'object_source_folder')
-        row.prop(cfg, 'object_source_folder')
+        row.prop(cfg, 'object_source_folder', text=tr('object_source_folder'))
 
-        layout.row().prop(cfg, 'color_storage')
-        layout.row().prop(cfg, 'import_skeleton_type')
+        layout.row().prop(cfg, 'color_storage', text=tr('color_storage'))
+        layout.row().prop(cfg, 'import_skeleton_type', text=tr('import_skeleton_type'))
         if cfg.import_skeleton_type == 'MERGED':
-            layout.row().prop(cfg, 'skip_empty_vertex_groups')
-        layout.row().prop(cfg, 'mirror_mesh')
+            layout.row().prop(cfg, 'skip_empty_vertex_groups', text=tr('skip_empty_vertex_groups'))
+        layout.row().prop(cfg, 'mirror_mesh', text=tr('mirror_mesh'))
 
         layout.row()
 
-        layout.row().operator(WWMI_Import.bl_idname)
+        layout.row().operator(WWMI_Import.bl_idname, text=tr('import_object'))
 
     def draw_menu_extract_frame_data(self, context):
         cfg = context.scene.wwmi_tools_settings
@@ -181,26 +187,26 @@ class WWMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
         layout.row()
 
         row = add_row_with_error_handler(layout, cfg, 'frame_dump_folder')
-        row.prop(cfg, 'frame_dump_folder')
+        row.prop(cfg, 'frame_dump_folder', text=tr('frame_dump_folder'))
 
-        layout.row().prop(cfg, 'extract_output_folder')
+        layout.row().prop(cfg, 'extract_output_folder', text=tr('extract_output_folder'))
 
         layout.row()
 
         col = layout.column(align=True)
         grid = col.grid_flow(columns=2, align=True)
         grid.alignment = 'LEFT'
-        grid.prop(cfg, 'skip_small_textures')
+        grid.prop(cfg, 'skip_small_textures', text=tr('skip_small_textures'))
         if cfg.skip_small_textures:
-            grid.prop(cfg, 'skip_small_textures_size')
+            grid.prop(cfg, 'skip_small_textures_size', text=tr('skip_small_textures_size'))
 
-        layout.row().prop(cfg, 'skip_jpg_textures')
-        layout.row().prop(cfg, 'skip_known_cubemap_textures')
-        layout.row().prop(cfg, 'skip_same_slot_hash_textures')
+        layout.row().prop(cfg, 'skip_jpg_textures', text=tr('skip_jpg_textures'))
+        layout.row().prop(cfg, 'skip_known_cubemap_textures', text=tr('skip_known_cubemap_textures'))
+        layout.row().prop(cfg, 'skip_same_slot_hash_textures', text=tr('skip_same_slot_hash_textures'))
 
         layout.row()
 
-        layout.row().operator(WWMI_ExtractFrameData.bl_idname)
+        layout.row().operator(WWMI_ExtractFrameData.bl_idname, text=tr('extract_frame_data'))
 
 
 class WWMI_TOOLS_PT_SidePanelPartialExport(bpy.types.Panel):
@@ -223,17 +229,18 @@ class WWMI_TOOLS_PT_SidePanelPartialExport(bpy.types.Panel):
         layout = self.layout
         cfg = context.scene.wwmi_tools_settings
         box = layout.box()
-        box.row().prop(cfg, 'export_index')
-        box.row().prop(cfg, 'export_positions')
-        box.row().prop(cfg, 'export_blends')
-        box.row().prop(cfg, 'export_vectors')
-        box.row().prop(cfg, 'export_colors')
-        box.row().prop(cfg, 'export_texcoords')
-        box.row().prop(cfg, 'export_shapekeys')
+        box.row().prop(cfg, 'export_index', text=tr('export_index'))
+        box.row().prop(cfg, 'export_positions', text=tr('export_positions'))
+        box.row().prop(cfg, 'export_blends', text=tr('export_blends'))
+        box.row().prop(cfg, 'export_vectors', text=tr('export_vectors'))
+        box.row().prop(cfg, 'export_colors', text=tr('export_colors'))
+        box.row().prop(cfg, 'export_texcoords', text=tr('export_texcoords'))
+        box.row().prop(cfg, 'export_shapekeys', text=tr('export_shapekeys'))
 
 
 class WWMI_TOOLS_PT_SidePanelAdvancedExport(bpy.types.Panel):
-    bl_label = "Advanced"
+    bl_label = " "
+    bl_idname = "WWMI_TOOLS_PT_ADVANCED_EXPORT"
     bl_parent_id = "WWMI_TOOLS_PT_SIDEBAR"
     # bl_options = {'DEFAULT_CLOSED'}
     bl_space_type = 'VIEW_3D'
@@ -246,22 +253,26 @@ class WWMI_TOOLS_PT_SidePanelAdvancedExport(bpy.types.Panel):
         cfg = context.scene.wwmi_tools_settings
         return cfg.tool_mode == 'EXPORT_MOD'
 
+    def draw_header(self, context):
+        self.layout.label(text=tr('panel_advanced'))
+
     def draw(self, context):
         layout = self.layout
         cfg = context.scene.wwmi_tools_settings
 
         if not cfg.partial_export:
-            layout.row().prop(cfg, 'skip_known_cubemap_textures')
-            layout.row().prop(cfg, 'add_missing_vertex_groups')
-            layout.row().prop(cfg, 'unrestricted_custom_shape_keys')
+            layout.row().prop(cfg, 'skip_known_cubemap_textures', text=tr('skip_known_cubemap_textures'))
+            layout.row().prop(cfg, 'add_missing_vertex_groups', text=tr('add_missing_vertex_groups'))
+            layout.row().prop(cfg, 'unrestricted_custom_shape_keys', text=tr('unrestricted_custom_shape_keys'))
             if cfg.mod_skeleton_type == 'MERGED':
-                layout.row().prop(cfg, 'skeleton_scale')
+                layout.row().prop(cfg, 'skeleton_scale', text=tr('skeleton_scale'))
 
-        layout.row().prop(cfg, 'partial_export')
+        layout.row().prop(cfg, 'partial_export', text=tr('partial_export'))
 
 
 class WWMI_TOOLS_PT_SidePanelModInfo(bpy.types.Panel):
-    bl_label = "Mod Info"
+    bl_label = " "
+    bl_idname = "WWMI_TOOLS_PT_MOD_INFO"
     bl_parent_id = "WWMI_TOOLS_PT_SIDEBAR"
     # bl_options = {'DEFAULT_CLOSED'}
     bl_space_type = 'VIEW_3D'
@@ -274,18 +285,21 @@ class WWMI_TOOLS_PT_SidePanelModInfo(bpy.types.Panel):
         cfg = context.scene.wwmi_tools_settings
         return cfg.tool_mode == 'EXPORT_MOD' and not cfg.partial_export
 
+    def draw_header(self, context):
+        self.layout.label(text=tr('panel_mod_info'))
+
     def draw(self, context):
         layout = self.layout
         cfg = context.scene.wwmi_tools_settings
-        layout.row().prop(cfg, 'mod_name')
-        layout.row().prop(cfg, 'mod_author')
-        layout.row().prop(cfg, 'mod_desc')
-        layout.row().prop(cfg, 'mod_link')
-        layout.row().prop(cfg, 'mod_logo')
+        layout.row().prop(cfg, 'mod_name', text=tr('mod_name'))
+        layout.row().prop(cfg, 'mod_author', text=tr('mod_author'))
+        layout.row().prop(cfg, 'mod_desc', text=tr('mod_desc'))
+        layout.row().prop(cfg, 'mod_link', text=tr('mod_link'))
+        layout.row().prop(cfg, 'mod_logo', text=tr('mod_logo'))
 
 
 class WWMI_TOOLS_PT_SidePanelIniTemplate(bpy.types.Panel):
-    bl_label = "Ini Template"
+    bl_label = " "
     bl_idname = "WWMI_TOOLS_PT_INI_TEMPLATE"
     bl_parent_id = "WWMI_TOOLS_PT_SIDEBAR"
     bl_options = {'DEFAULT_CLOSED'}
@@ -298,7 +312,10 @@ class WWMI_TOOLS_PT_SidePanelIniTemplate(bpy.types.Panel):
     def poll(cls, context):
         cfg = context.scene.wwmi_tools_settings
         return cfg.tool_mode == 'EXPORT_MOD' and not cfg.partial_export
-    
+
+    def draw_header(self, context):
+        self.layout.label(text=tr('panel_ini_template'))
+
     def draw(self, context):
         layout = self.layout
         cfg = context.scene.wwmi_tools_settings
@@ -308,29 +325,29 @@ class WWMI_TOOLS_PT_SidePanelIniTemplate(bpy.types.Panel):
         split = row.split(factor=0.5)
 
         col_left = split.column()
-        col_left.prop(cfg, 'use_custom_template')
+        col_left.prop(cfg, 'use_custom_template', text=tr('use_custom_template'))
 
         col_left = split.column()
-        col_left.prop(cfg, 'custom_template_source')
+        col_left.prop(cfg, 'custom_template_source', text=tr('custom_template_source'))
         
         if cfg.custom_template_source == 'INTERNAL':
-            layout.row().operator(WWMI_OpenIniTemplateEditor.bl_idname)
+            layout.row().operator(WWMI_OpenIniTemplateEditor.bl_idname, text=tr('edit_template'))
 
         elif cfg.custom_template_source == 'EXTERNAL':
             row = add_row_with_error_handler(layout, cfg, 'custom_template_path')
-            row.prop(cfg, 'custom_template_path')
+            row.prop(cfg, 'custom_template_path', text=tr('custom_template_path'))
 
             row = layout.row()
             split = row.split(factor=0.5)
 
             col_left = split.column()
-            col_left.operator(WWMI_OpenIniTemplateEditor.bl_idname)
+            col_left.operator(WWMI_OpenIniTemplateEditor.bl_idname, text=tr('edit_template'))
             
             col_right = split.column()
             if cfg.custom_template_live_update:
-                col_right.operator(WWMI_IniTemplateEditor_ToggleLiveUpdates.bl_idname, text="Stop Ini Updates")
+                col_right.operator(WWMI_IniTemplateEditor_ToggleLiveUpdates.bl_idname, text=tr('stop_ini_updates'))
             else:
-                col_right.operator(WWMI_IniTemplateEditor_ToggleLiveUpdates.bl_idname, text="Start Ini Updates")
+                col_right.operator(WWMI_IniTemplateEditor_ToggleLiveUpdates.bl_idname, text=tr('start_ini_updates'))
 
 
 class WWMI_TOOLS_PT_SidePanelExportFooter(bpy.types.Panel):
@@ -352,9 +369,9 @@ class WWMI_TOOLS_PT_SidePanelExportFooter(bpy.types.Panel):
         layout = self.layout
         cfg = context.scene.wwmi_tools_settings
         if cfg.custom_template_live_update:
-            layout.operator(WWMI_IniTemplateEditor_ToggleLiveUpdates.bl_idname, text="Stop Ini Updates")
+            layout.operator(WWMI_IniTemplateEditor_ToggleLiveUpdates.bl_idname, text=tr('stop_ini_updates'))
         else:
-            layout.row().operator(WWMI_Export.bl_idname)
+            layout.row().operator(WWMI_Export.bl_idname, text=tr('export_mod'))
 
 
 # @orientation_helper(axis_forward='-Z', axis_up='Y')
@@ -586,16 +603,16 @@ class WWMI_TOOLS_PT_TEXT_EDITOR_IniTemplate(bpy.types.Panel):
         cfg = context.scene.wwmi_tools_settings
         
         if cfg.custom_template_live_update:
-            layout.operator(WWMI_IniTemplateEditor_ToggleLiveUpdates.bl_idname, text="Stop Ini Updates")
+            layout.operator(WWMI_IniTemplateEditor_ToggleLiveUpdates.bl_idname, text=tr('stop_ini_updates'))
         else:
-            layout.operator(WWMI_IniTemplateEditor_ToggleLiveUpdates.bl_idname, text="Start Ini Updates")
+            layout.operator(WWMI_IniTemplateEditor_ToggleLiveUpdates.bl_idname, text=tr('start_ini_updates'))
 
         layout.operator(WWMI_IniTemplateEditor_Reset.bl_idname)
 
 
 class UpdaterPanel(bpy.types.Panel):
     """Update Panel"""
-    bl_label = "Update Settings"
+    bl_label = " "
     bl_idname = "WWMI_TOOLS_PT_UpdaterPanel"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -603,6 +620,9 @@ class UpdaterPanel(bpy.types.Panel):
     bl_category = "WWMI Tools"
     bl_order = 99
     bl_options = {'DEFAULT_CLOSED'}
+
+    def draw_header(self, context):
+        self.layout.label(text=tr('panel_update_settings'))
 
     def draw(self, context):
         layout = self.layout
@@ -617,7 +637,7 @@ class UpdaterPanel(bpy.types.Panel):
         col.scale_y = 0.7
         # Could also use your own custom drawing based on shared variables.
         if addon_updater_ops.updater.update_ready:
-            layout.label(text="There's a new update available!", icon="INFO")
+            layout.label(text=tr('update_available'), icon="INFO")
 
         # Call built-in function with draw code/checks.
         addon_updater_ops.update_notice_box_ui(self, context)
@@ -626,7 +646,7 @@ class UpdaterPanel(bpy.types.Panel):
 
 class DebugPanel(bpy.types.Panel):
     """Debug Panel"""
-    bl_label = "Debug Settings"
+    bl_label = " "
     bl_idname = "WWMI_TOOLS_PT_DebugPanel"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -635,10 +655,13 @@ class DebugPanel(bpy.types.Panel):
     bl_order = 80
     bl_options = {'DEFAULT_CLOSED'}
 
+    def draw_header(self, context):
+        self.layout.label(text=tr('panel_debug_settings'))
+
     def draw(self, context):
         layout = self.layout
         cfg = context.scene.wwmi_tools_settings
 
-        layout.row().prop(cfg, 'allow_missing_shapekeys')
-        layout.row().prop(cfg, 'remove_temp_object')
-        layout.row().prop(cfg, 'export_on_reload')
+        layout.row().prop(cfg, 'allow_missing_shapekeys', text=tr('allow_missing_shapekeys'))
+        layout.row().prop(cfg, 'remove_temp_object', text=tr('remove_temp_object'))
+        layout.row().prop(cfg, 'export_on_reload', text=tr('export_on_reload'))

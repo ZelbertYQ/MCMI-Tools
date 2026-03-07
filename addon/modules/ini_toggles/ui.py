@@ -3,9 +3,11 @@ import json
 
 from textwrap import dedent
 
+from ....language import tr
+
 
 class WWMI_TOOLS_PT_SidePanelIniToggles(bpy.types.Panel):
-    bl_label = "Ini Toggles"
+    bl_label = " "
     bl_idname = "WWMI_TOOLS_PT_INI_TOGGLES"
     bl_parent_id = "WWMI_TOOLS_PT_SIDEBAR"
     bl_options = {'DEFAULT_CLOSED'}
@@ -18,23 +20,26 @@ class WWMI_TOOLS_PT_SidePanelIniToggles(bpy.types.Panel):
     def poll(cls, context):
         cfg = context.scene.wwmi_tools_settings
         return cfg.tool_mode == 'EXPORT_MOD' and not cfg.partial_export
-    
+
+    def draw_header(self, context):
+        self.layout.label(text=tr('panel_ini_toggles'))
+
     def draw(self, context):
         layout = self.layout
         cfg = context.scene.wwmi_tools_settings
     
-        layout.prop(cfg, 'use_ini_toggles')
+        layout.prop(cfg, 'use_ini_toggles', text=tr('use_ini_toggles'))
         
-        layout.operator("wwmi_tools.open_ini_toggles_import_export_editor")
+        layout.operator("wwmi_tools.open_ini_toggles_import_export_editor", text=tr('open_ini_toggles_editor'))
 
-        layout.prop(cfg.ini_toggles, 'hide_empty_states')
-        layout.prop(cfg.ini_toggles, 'hide_default_conditions')
+        layout.prop(cfg.ini_toggles, 'hide_empty_states', text=tr('hide_empty_states'))
+        layout.prop(cfg.ini_toggles, 'hide_default_conditions', text=tr('hide_default_conditions'))
 
         row = layout.row()
-        row.operator("wwmi_tools.collapse_toggle_vars", icon="TRIA_DOWN")
-        row.operator("wwmi_tools.expand_toggle_vars", icon="TRIA_RIGHT")
+        row.operator("wwmi_tools.collapse_toggle_vars", icon="TRIA_DOWN", text=tr('collapse_vars'))
+        row.operator("wwmi_tools.expand_toggle_vars", icon="TRIA_RIGHT", text=tr('expand_vars'))
 
-        layout.operator("wwmi_tools.add_toggle_var", text="Add Var", icon="ADD")
+        layout.operator("wwmi_tools.add_toggle_var", text=tr('add_var'), icon="ADD")
 
         for i in reversed(range(len(cfg.ini_toggles.vars))):
             var = cfg.ini_toggles.vars[i]
@@ -101,9 +106,9 @@ class WWMI_TOOLS_PT_SidePanelIniToggles(bpy.types.Panel):
                     sub_row.alert = state_error
 
                     if var.default_state == state.name:
-                        sub_row.label(text=f"State {state.name} (default)")
+                        sub_row.label(text=tr('state_default').format(n=state.name))
                     else:
-                        sub_row.label(text=f"State {state.name}")
+                        sub_row.label(text=tr('state').format(n=state.name))
 
                     sub_row.alert = False
 
@@ -249,7 +254,7 @@ class WWMI_TOOLS_OT_EditToggleVar(bpy.types.Operator):
         cfg = context.scene.wwmi_tools_settings
         layout = self.layout
         
-        layout.label(text="Toggle Var Settings:")
+        layout.label(text=tr('toggle_var_settings'))
 
         var = cfg.ini_toggles.vars[self.var_index]
 
@@ -261,7 +266,7 @@ class WWMI_TOOLS_OT_EditToggleVar(bpy.types.Operator):
         
         split.prop(var, "hotkeys")
 
-        op = split.operator("wm.url_open", text="Key Codes", icon='HELP')
+        op = split.operator("wm.url_open", text=tr('key_codes'), icon='HELP')
         op.url = "https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes"
 
         row = box.row()
@@ -382,7 +387,7 @@ class WWMI_TOOLS_OT_EditVarStateObject(bpy.types.Operator):
         cfg = context.scene.wwmi_tools_settings
         layout = self.layout
         
-        layout.label(text="State Object Conditions:")
+        layout.label(text=tr('state_object_conditions'))
 
         var = cfg.ini_toggles.vars[self.var_index]
         state = var.states[self.state_index]
@@ -607,7 +612,7 @@ class WWMI_TOOLS_PT_TEXT_EDITOR_IniToggles(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         cfg = context.scene.wwmi_tools_settings
-        layout.operator(WWMI_TOOLS_ExportIniToggles.bl_idname)
-        layout.operator(WWMI_TOOLS_ImportIniToggles.bl_idname)
-        layout.prop(cfg.ini_toggles, 'replace_vars_on_import')
-        layout.prop(cfg.ini_toggles, 'clear_vars_on_import')
+        layout.operator(WWMI_TOOLS_ExportIniToggles.bl_idname, text=tr('export_ini_toggles'))
+        layout.operator(WWMI_TOOLS_ImportIniToggles.bl_idname, text=tr('import_ini_toggles'))
+        layout.prop(cfg.ini_toggles, 'replace_vars_on_import', text=tr('replace_vars_on_import'))
+        layout.prop(cfg.ini_toggles, 'clear_vars_on_import', text=tr('clear_vars_on_import'))

@@ -26,6 +26,7 @@ import traceback
 import bpy
 from bpy.app.handlers import persistent
 from . import bl_info
+from .language import tr
 
 # Safely import the updater.
 # Prevents popups for users with invalid python installs e.g. missing libraries
@@ -896,9 +897,9 @@ def update_notice_box_ui(self, context):
             alert_row.alert = True
             alert_row.operator(
                 "wm.quit_blender",
-                text="Restart blender",
+                text=tr('upd_restart_short'),
                 icon="ERROR")
-            col.label(text="to complete update")
+            col.label(text=tr('upd_restart_detail'))
             return
 
     # If user pressed ignore, don't draw the box.
@@ -911,28 +912,28 @@ def update_notice_box_ui(self, context):
     box = layout.box()
     col = box.column(align=True)
     col.alert = True
-    col.label(text="Update ready!", icon="ERROR")
+    col.label(text=tr('upd_notice_ready'), icon="ERROR")
     col.alert = False
     col.separator()
     row = col.row(align=True)
     split = row.split(align=True)
     colL = split.column(align=True)
     colL.scale_y = 1.5
-    colL.operator(AddonUpdaterIgnore.bl_idname, icon="X", text="Ignore")
+    colL.operator(AddonUpdaterIgnore.bl_idname, icon="X", text=tr('upd_ignore'))
     colR = split.column(align=True)
     colR.scale_y = 1.5
     if not updater.manual_only:
         colR.operator(AddonUpdaterUpdateNow.bl_idname,
-                      text="Update", icon="LOOP_FORWARDS")
-        col.operator("wm.url_open", text="Open website").url = updater.website
+                      text=tr('upd_update'), icon="LOOP_FORWARDS")
+        col.operator("wm.url_open", text=tr('upd_open_website')).url = updater.website
         # ops = col.operator("wm.url_open",text="Direct download")
         # ops.url=updater.update_link
         col.operator(AddonUpdaterInstallManually.bl_idname,
-                     text="Install manually")
+                     text=tr('upd_install_manually'))
     else:
         # ops = col.operator("wm.url_open", text="Direct download")
         # ops.url=updater.update_link
-        col.operator("wm.url_open", text="Get it now").url = updater.website
+        col.operator("wm.url_open", text=tr('upd_get_now')).url = updater.website
 
 
 def update_settings_ui(self, context, element=None):
@@ -970,7 +971,7 @@ def update_settings_ui(self, context, element=None):
         if "just_updated" in saved_state and saved_state["just_updated"]:
             row.alert = True
             row.operator("wm.quit_blender",
-                         text="Restart blender to complete update",
+                         text=tr('upd_restart'),
                          icon="ERROR")
             return
 
@@ -1004,7 +1005,7 @@ def update_settings_ui(self, context, element=None):
         split = sub_col.split(align=True)
         split.enabled = False
         split.scale_y = 2
-        split.operator(AddonUpdaterCheckNow.bl_idname, text="Checking...")
+        split.operator(AddonUpdaterCheckNow.bl_idname, text=tr('upd_checking'))
         split = sub_col.split(align=True)
         split.scale_y = 2
         split.operator(AddonUpdaterEndBackground.bl_idname, text="", icon="X")
@@ -1017,8 +1018,7 @@ def update_settings_ui(self, context, element=None):
         sub_col.scale_y = 1
         split = sub_col.split(align=True)
         split.scale_y = 2
-        update_now_txt = "Update directly to {}".format(
-            updater.include_branch_list[0])
+        update_now_txt = tr('upd_update_direct').format(v=updater.include_branch_list[0])
         split.operator(AddonUpdaterUpdateNow.bl_idname, text=update_now_txt)
         split = sub_col.split(align=True)
         split.scale_y = 2
@@ -1031,7 +1031,7 @@ def update_settings_ui(self, context, element=None):
         split = sub_col.split(align=True)
         split.scale_y = 2
         split.operator(AddonUpdaterUpdateNow.bl_idname,
-                       text="Update now to " + str(updater.update_version))
+                       text=tr('upd_update_now').format(v=str(updater.update_version)))
         split = sub_col.split(align=True)
         split.scale_y = 2
         split.operator(AddonUpdaterCheckNow.bl_idname,
@@ -1039,7 +1039,7 @@ def update_settings_ui(self, context, element=None):
 
     elif updater.update_ready and updater.manual_only:
         col.scale_y = 2
-        dl_now_txt = "Download " + str(updater.update_version)
+        dl_now_txt = tr('upd_download').format(v=str(updater.update_version))
         col.operator("wm.url_open",
                      text=dl_now_txt).url = updater.website
     else:  # i.e. that updater.update_ready == False.
@@ -1049,7 +1049,7 @@ def update_settings_ui(self, context, element=None):
         split.enabled = False
         split.scale_y = 2
         split.operator(AddonUpdaterCheckNow.bl_idname,
-                       text="Addon is up to date")
+                       text=tr('upd_up_to_date'))
         split = sub_col.split(align=True)
         split.scale_y = 2
         split.operator(AddonUpdaterCheckNow.bl_idname,
@@ -1060,31 +1060,31 @@ def update_settings_ui(self, context, element=None):
         if updater.include_branches and len(updater.include_branch_list) > 0:
             branch = updater.include_branch_list[0]
             col.operator(AddonUpdaterUpdateTarget.bl_idname,
-                         text="Install {} / old version".format(branch))
+                         text=tr('upd_install_branch').format(b=branch))
         else:
             col.operator(AddonUpdaterUpdateTarget.bl_idname,
-                         text="(Re)install addon version")
+                         text=tr('upd_reinstall'))
         last_date = "none found"
         backup_path = os.path.join(updater.stage_path, "backup")
         if "backup_date" in updater.json and os.path.isdir(backup_path):
             if updater.json["backup_date"] == "":
-                last_date = "Date not found"
+                last_date = tr('upd_date_not_found')
             else:
                 last_date = updater.json["backup_date"]
-        backup_text = "Restore addon backup ({})".format(last_date)
+        backup_text = tr('upd_restore_backup').format(d=last_date)
         col.operator(AddonUpdaterRestoreBackup.bl_idname, text=backup_text)
 
     row = box.row()
     
     split = layout_split(row, factor=0.4)
     sub_col = split.column()
-    sub_col.prop(settings, "auto_check_update")
+    sub_col.prop(settings, "auto_check_update", text=tr('upd_auto_check'))
     sub_col = split.column()
 
     if not settings.auto_check_update:
         sub_col.enabled = False
     sub_row = sub_col.row()
-    sub_row.label(text="Interval between checks")
+    sub_row.label(text=tr('upd_interval'))
     sub_row = sub_col.row(align=True)
     check_col = sub_row.column(align=True)
     check_col.prop(settings, "updater_interval_months")
@@ -1104,9 +1104,9 @@ def update_settings_ui(self, context, element=None):
         row.label(text=updater.error_msg)
     elif last_check:
         last_check = last_check[0: last_check.index(".")]
-        row.label(text="Last update check: " + last_check)
+        row.label(text=tr('upd_last_check').format(t=last_check))
     else:
-        row.label(text="Last update check: Never")
+        row.label(text=tr('upd_last_check_never'))
 
 
 def update_settings_ui_condensed(self, context, element=None):
@@ -1137,7 +1137,7 @@ def update_settings_ui_condensed(self, context, element=None):
             row.alert = True  # mark red
             row.operator(
                 "wm.quit_blender",
-                text="Restart blender to complete update",
+                text=tr('upd_restart'),
                 icon="ERROR")
             return
 
@@ -1162,14 +1162,14 @@ def update_settings_ui_condensed(self, context, element=None):
 
     elif updater.update_ready is None and not updater.async_checking:
         col.scale_y = 2
-        col.operator(AddonUpdaterCheckNow.bl_idname)
+        col.operator(AddonUpdaterCheckNow.bl_idname, text=tr('upd_check_now'))
     elif updater.update_ready is None:  # Async is running.
         sub_col = col.row(align=True)
         sub_col.scale_y = 1
         split = sub_col.split(align=True)
         split.enabled = False
         split.scale_y = 2
-        split.operator(AddonUpdaterCheckNow.bl_idname, text="Checking...")
+        split.operator(AddonUpdaterCheckNow.bl_idname, text=tr('upd_checking'))
         split = sub_col.split(align=True)
         split.scale_y = 2
         split.operator(AddonUpdaterEndBackground.bl_idname, text="", icon="X")
@@ -1182,7 +1182,7 @@ def update_settings_ui_condensed(self, context, element=None):
         sub_col.scale_y = 1
         split = sub_col.split(align=True)
         split.scale_y = 2
-        now_txt = "Update directly to " + str(updater.include_branch_list[0])
+        now_txt = tr('upd_update_direct').format(v=str(updater.include_branch_list[0]))
         split.operator(AddonUpdaterUpdateNow.bl_idname, text=now_txt)
         split = sub_col.split(align=True)
         split.scale_y = 2
@@ -1195,7 +1195,7 @@ def update_settings_ui_condensed(self, context, element=None):
         split = sub_col.split(align=True)
         split.scale_y = 2
         split.operator(AddonUpdaterUpdateNow.bl_idname,
-                       text="Update now to " + str(updater.update_version))
+                       text=tr('upd_update_now').format(v=str(updater.update_version)))
         split = sub_col.split(align=True)
         split.scale_y = 2
         split.operator(AddonUpdaterCheckNow.bl_idname,
@@ -1203,7 +1203,7 @@ def update_settings_ui_condensed(self, context, element=None):
 
     elif updater.update_ready and updater.manual_only:
         col.scale_y = 2
-        dl_txt = "Download " + str(updater.update_version)
+        dl_txt = tr('upd_download').format(v=str(updater.update_version))
         col.operator("wm.url_open", text=dl_txt).url = updater.website
     else:  # i.e. that updater.update_ready == False.
         sub_col = col.row(align=True)
@@ -1212,14 +1212,14 @@ def update_settings_ui_condensed(self, context, element=None):
         split.enabled = False
         split.scale_y = 2
         split.operator(AddonUpdaterCheckNow.bl_idname,
-                       text="Addon is up to date")
+                       text=tr('upd_up_to_date'))
         split = sub_col.split(align=True)
         split.scale_y = 2
         split.operator(AddonUpdaterCheckNow.bl_idname,
                        text="", icon="FILE_REFRESH")
 
     row = element.row()
-    row.prop(settings, "auto_check_update")
+    row.prop(settings, "auto_check_update", text=tr('upd_auto_check'))
 
     row = element.row()
     row.scale_y = 0.7
@@ -1228,9 +1228,9 @@ def update_settings_ui_condensed(self, context, element=None):
         row.label(text=updater.error_msg)
     elif last_check != "" and last_check is not None:
         last_check = last_check[0: last_check.index(".")]
-        row.label(text="Last check: " + last_check)
+        row.label(text=tr('upd_last_check').format(t=last_check))
     else:
-        row.label(text="Last check: Never")
+        row.label(text=tr('upd_last_check_never'))
 
 
 def skip_tag_function(self, tag):

@@ -9,6 +9,54 @@ from .. import addon_updater_ops
 from .modules.ini_toggles.props import IniToggles
 
 from .exceptions import clear_error
+from ..language import tr
+
+
+def _tool_mode_items(self, context):
+    r = [
+        ('EXPORT_MOD', tr('mode_export_mod'), 'Export selected collection as WWMI mod'),
+        ('IMPORT_OBJECT', tr('mode_import_object'), 'Import .ib and .vb files from selected directory'),
+        ('EXTRACT_FRAME_DATA', tr('mode_extract_frame_data'), 'Extract components of all WWMI-compatible objects from the selected frame dump directory'),
+        ('TOOLS_MODE', tr('mode_toolbox'), 'Bunch of useful object actions'),
+    ]
+    _tool_mode_items._r = r
+    return r
+
+
+def _color_storage_items(self, context):
+    r = [
+        ('LINEAR', tr('color_linear'), 'Display vertex colors as they actually are and store them with full float precision. Handle colors via `color_attributes`'),
+        ('LEGACY', tr('color_srgb_legacy'), 'Display vertex colors as sRGB shifted and store them with 8-bit float precision. Handle colors via deprecated `vertex_colors`'),
+    ]
+    _color_storage_items._r = r
+    return r
+
+
+def _import_skeleton_items(self, context):
+    r = [
+        ('MERGED', tr('skeleton_merged'), 'Imported mesh will have unified list of Vertex Groups, allowing to weight any vertex of any component to any bone. Mod Upsides: easy to weight, custom skeleton scale support, advanced weighting support (i.e. long hair to cape). Mod Downsides: model will be updated with 1 frame delay, mod will pause while there are more than one of same modded object on screen. Suggested usage: new modders, character or echo mods with complex weights.'),
+        ('COMPONENT', tr('skeleton_component'), 'Imported mesh will have its Vertex Groups split into per component lists, restricting weighting of any vertex only to its parent component. Mod Upsides: no 1-frame delay for model updates, minor performance gain. Mod downsides: hard to weight, very limited weighting options, no custom skeleton scale support. Suggested usage: weapon mods and simple retextures.'),
+    ]
+    _import_skeleton_items._r = r
+    return r
+
+
+def _export_skeleton_items(self, context):
+    r = [
+        ('MERGED', tr('skeleton_merged'), 'Mesh with this skeleton should have unified list of Vertex Groups'),
+        ('COMPONENT', tr('skeleton_component'), 'Mesh with this skeleton should have its Vertex Groups split into per-component lists.'),
+    ]
+    _export_skeleton_items._r = r
+    return r
+
+
+def _template_source_items(self, context):
+    r = [
+        ('INTERNAL', tr('tmpl_builtin'), 'Use Blender scripting tab file as custom template.'),
+        ('EXTERNAL', tr('tmpl_external'), 'Use specified file as custom template.'),
+    ]
+    _template_source_items._r = r
+    return r
 
 
 class WWMI_Settings(bpy.types.PropertyGroup):
@@ -45,14 +93,9 @@ class WWMI_Settings(bpy.types.PropertyGroup):
     tool_mode: bpy.props.EnumProperty(
         name="Mode",
         description="Defines list of available actions",
-        items=[
-            ('EXPORT_MOD', 'Export Mod', 'Export selected collection as WWMI mod'),
-            ('IMPORT_OBJECT', 'Import Object', 'Import .ib ad .vb files from selected directory'),
-            ('EXTRACT_FRAME_DATA', 'Extract Objects From Dump', 'Extract components of all WWMI-compatible objects from the selected frame dump directory'),
-            ('TOOLS_MODE', 'Toolbox', 'Bunch of useful object actions'),
-        ],
+        items=_tool_mode_items,
         update=lambda self, context: clear_error(self),
-        default='EXTRACT_FRAME_DATA',
+        default=2,
     ) # type: ignore
 
     ########################################
@@ -119,20 +162,14 @@ class WWMI_Settings(bpy.types.PropertyGroup):
     color_storage: bpy.props.EnumProperty(
         name="Vertex Colors",
         description="Controls how color data is handled",
-        items=[
-            ('LINEAR', 'Linear', 'Display vertex colors as they actually are and store them with full float precision. Handle colors via `color_attributes`'),
-            ('LEGACY', 'sRGB (legacy)', 'Display vertex colors as sRGB shifted and store them with 8-bit float precision. Handle colors via deprecated `vertex_colors`'),
-        ],
-        default='LINEAR',
+        items=_color_storage_items,
+        default=0,
     ) # type: ignore
 
     import_skeleton_type: bpy.props.EnumProperty(
         name="Skeleton",
         description="Controls the way of Vertex Groups handling",
-        items=[
-            ('MERGED', 'Merged', 'Imported mesh will have unified list of Vertex Groups, allowing to weight any vertex of any component to any bone. Mod Upsides: easy to weight, custom skeleton scale support, advanced weighting support (i.e. long hair to cape). Mod Downsides: model will be updated with 1 frame delay, mod will pause while there are more than one of same modded object on screen. Suggested usage: new modders, character or echo mods with complex weights.'),
-            ('COMPONENT', 'Per-Component', 'Imported mesh will have its Vertex Groups split into per component lists, restricting weighting of any vertex only to its parent component. Mod Upsides: no 1-frame delay for model updates, minor performance gain. Mod downsides: hard to weight, very limited weighting options, no custom skeleton scale support. Suggested usage: weapon mods and simple retextures.'),
-        ],
+        items=_import_skeleton_items,
         default=0,
     ) # type: ignore
 
@@ -173,10 +210,7 @@ class WWMI_Settings(bpy.types.PropertyGroup):
     mod_skeleton_type: bpy.props.EnumProperty(
         name="Skeleton",
         description="Select the same skeleton type that was used for import! Defines logic of exported mod.ini.",
-        items=[
-            ('MERGED', 'Merged', 'Mesh with this skeleton should have unified list of Vertex Groups'),
-            ('COMPONENT', 'Per-Component', 'Mesh with this skeleton should have its Vertex Groups split into per-component lists.'),
-        ],
+        items=_export_skeleton_items,
         default=0,
     ) # type: ignore
 
@@ -349,10 +383,7 @@ class WWMI_Settings(bpy.types.PropertyGroup):
     custom_template_source: bpy.props.EnumProperty(
         name="Storage",
         description="Select custom template storage type.",
-        items=[
-            ('INTERNAL', 'Built-in Editor', 'Use Blender scripting tab file as custom template.'),
-            ('EXTERNAL', 'External File', 'Use specified file as custom template.'),
-        ],
+        items=_template_source_items,
         default=0,
         update=lambda self, context: self.on_update_clear_error('use_custom_template'),
     ) # type: ignore
@@ -415,6 +446,16 @@ class WWMI_Settings(bpy.types.PropertyGroup):
 class Preferences(bpy.types.AddonPreferences):
     """Preferences updater"""
     bl_idname = package_name
+
+    ui_language: bpy.props.EnumProperty(
+        name="UI Language / 界面语言",
+        items=[
+            ('EN', 'English', 'Use English interface'),
+            ('ZH', '中文', '使用中文界面'),
+        ],
+        default='ZH',
+    ) # type: ignore
+
     # Addon updater preferences.
 
     auto_check_update: BoolProperty(

@@ -4,6 +4,8 @@ from bpy.props import BoolProperty, StringProperty, PointerProperty, IntProperty
 
 from ...exceptions import clear_error, ConfigError
 
+from ....language import tr
+
     
 from ....migoto_io.blender_tools.vertex_groups import *
 from ....migoto_io.blender_tools.modifiers import *
@@ -138,11 +140,11 @@ class WWMI_ApplyModifierForObjectWithShapeKeysOperator(bpy.types.Operator):
     def draw(self, context):
         if context.object.data.shape_keys and context.object.data.shape_keys.animation_data:
             self.layout.separator()
-            self.layout.label(text="Warning:")
-            self.layout.label(text="              Object contains animation data")
-            self.layout.label(text="              (like drivers, keyframes etc.)")
-            self.layout.label(text="              assigned to shape keys.")
-            self.layout.label(text="              Those data will be lost!")
+            self.layout.label(text=tr('sk_warning'))
+            self.layout.label(text=tr('sk_animation_data'))
+            self.layout.label(text=tr('sk_drivers_etc'))
+            self.layout.label(text=tr('sk_assigned_to'))
+            self.layout.label(text=tr('sk_will_be_lost'))
             self.layout.separator()
         #self.layout.prop(self, "my_enum")
         box = self.layout.box()
