@@ -256,6 +256,7 @@ class AddonUpdaterCheckNow(bpy.types.Operator):
             days=settings.updater_interval_days,
             hours=settings.updater_interval_hours,
             minutes=settings.updater_interval_minutes)
+        updater.private_token = settings.github_token if settings.github_token else None
 
         # Input is an optional callback function. This function should take a
         # bool input. If true: update ready, if false: no update ready.
@@ -791,6 +792,7 @@ def check_for_update_background():
                                days=settings.updater_interval_days,
                                hours=settings.updater_interval_hours,
                                minutes=settings.updater_interval_minutes)
+    updater.private_token = settings.github_token if settings.github_token else None
 
     # Input is an optional callback function. This function should take a bool
     # input, if true: update ready, if false: no update ready.
@@ -816,6 +818,7 @@ def check_for_update_nonthreaded(self, context):
                                days=settings.updater_interval_days,
                                hours=settings.updater_interval_hours,
                                minutes=settings.updater_interval_minutes)
+    updater.private_token = settings.github_token if settings.github_token else None
 
     (update_ready, version, link) = updater.check_for_update(now=False)
     if update_ready:

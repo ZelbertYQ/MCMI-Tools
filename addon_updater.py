@@ -679,6 +679,8 @@ class SingletonUpdater:
         if self._engine.token is not None:
             if self._engine.name == "gitlab":
                 request.add_header('PRIVATE-TOKEN', self._engine.token)
+            elif self._engine.name == "github":
+                request.add_header('Authorization', 'token ' + self._engine.token)
             else:
                 self.print_verbose("Tokens not setup for engine yet")
 
@@ -781,6 +783,8 @@ class SingletonUpdater:
             if self._engine.token is not None:
                 if self._engine.name == "gitlab":
                     request.add_header('PRIVATE-TOKEN', self._engine.token)
+                elif self._engine.name == "github":
+                    request.add_header('Authorization', 'token ' + self._engine.token)
                 else:
                     self.print_verbose(
                         "Tokens not setup for selected engine yet")

@@ -449,12 +449,19 @@ class Preferences(bpy.types.AddonPreferences):
         min=0,
         max=59) # type: ignore
 
+    github_token: bpy.props.StringProperty(
+        name="GitHub Token",
+        description="可选：GitHub Personal Access Token，可将 API 速率限制从 60次/小时 提升至 5000次/小时。在 github.com/settings/tokens 生成（无需任何权限）",
+        default="",
+        subtype='PASSWORD') # type: ignore
+
     def draw(self, context):
         layout = self.layout
         print(addon_updater_ops.get_user_preferences(context))
         # Works best if a column, or even just self.layout.
         mainrow = layout.row()
         col = mainrow.column()
+        col.prop(self, "github_token")
         # Updater draw function, could also pass in col as third arg.
         addon_updater_ops.update_settings_ui(self, context)
 
