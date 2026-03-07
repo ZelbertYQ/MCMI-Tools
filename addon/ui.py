@@ -191,6 +191,8 @@ class WWMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
 
         layout.row().prop(cfg, 'extract_output_folder', text=tr('extract_output_folder'))
 
+        layout.row().prop(cfg, 'assign_hash', text=tr('assign_hash'))
+
         layout.row()
 
         col = layout.column(align=True)

@@ -5,7 +5,7 @@ from enum import Enum
 
 from ..migoto_io.data_model.byte_buffer import ByteBuffer, IndexBuffer, BufferLayout, BufferSemantic, AbstractSemantic, Semantic
 from ..migoto_io.dump_parser.log_parser import CallParameters
-from ..migoto_io.dump_parser.filename_parser import ResourceDescriptor
+from ..migoto_io.dump_parser.filename_parser import ResourceDescriptor, SlotType
 from ..migoto_io.dump_parser.resource_collector import ShaderCallBranch
 
 
@@ -27,6 +27,7 @@ class ShapeKeyData:
 @dataclass
 class DrawData:
     vb_hash: str
+    ib_hash: str
     cb3_hash: str
     cb4_hash: str
     vertex_offset: int
@@ -138,6 +139,10 @@ class DataExtractor:
 
                 index_buffer = branch_call.resources['IB_BUFFER_TXT']
 
+                # Get IB hash from the raw resource descriptor (before it was converted to IndexBuffer)
+                ib_resource = branch_call.call.get_filtered_resource({'slot_type': SlotType.IndexBuffer})
+                ib_hash = ib_resource.hash if ib_resource is not None else ''
+
                 vb_hash = branch_call.resources['POSE_INPUT_0'].hash
 
                 vertex_indices = [x for y in index_buffer.faces for x in y]
@@ -187,6 +192,7 @@ class DataExtractor:
 
                 draw_data = DrawData(
                     vb_hash=branch_call.resources['POSE_INPUT_0'].hash,
+                    ib_hash=ib_hash,
                     cb3_hash=branch_call.resources['SKELETON_DATA_CB3'].hash,
                     cb4_hash=branch_call.resources['SKELETON_DATA'].hash,
                     vertex_offset=vertex_offset,

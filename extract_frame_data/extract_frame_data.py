@@ -333,9 +333,20 @@ def extract_frame_data(cfg):
             exclude_hashes=['af26db30', '1320a071', '10d7937d', '87505b2b'] if cfg.skip_known_cubemap_textures else []
         )
     )
-    
-    write_objects(resolve_path(cfg.extract_output_folder), output_builder.objects, cfg.allow_missing_shapekeys)
 
+    # Filter by IB hash if specified
+    assign_hash = getattr(cfg, 'assign_hash', '').strip().lower()
+    if assign_hash:
+        ib_to_vb = {dd.ib_hash.lower(): dd.vb_hash for dd in data_extractor.draw_data.values() if dd.ib_hash}
+        target_vb_hash = ib_to_vb.get(assign_hash)
+        if target_vb_hash is None:
+            available = ', '.join(sorted(ib_to_vb.keys()))
+            raise ConfigError('assign_hash', f'IB hash "{assign_hash}" not found in frame dump!\nAvailable IB hashes: {available}')
+        objects_to_write = {k: v for k, v in output_builder.objects.items() if k == target_vb_hash}
+    else:
+        objects_to_write = output_builder.objects
+
+    write_objects(resolve_path(cfg.extract_output_folder), objects_to_write, cfg.allow_missing_shapekeys)
     print(f"Execution time: %s seconds" % (time.time() - start_time))
 
     return output_builder

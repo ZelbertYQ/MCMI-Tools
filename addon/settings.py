@@ -147,6 +147,12 @@ class WWMI_Settings(bpy.types.PropertyGroup):
         subtype="DIR_PATH",
     ) # type: ignore
 
+    assign_hash: StringProperty(
+        name="Assign Hash",
+        description="IB hash to filter extraction. When specified, only the object with this IB hash will be extracted. Leave empty to extract all objects.",
+        default='',
+    ) # type: ignore
+
     ########################################
     # Object Import
     ########################################
