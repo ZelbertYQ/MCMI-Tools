@@ -1337,10 +1337,10 @@ def register():
         return
     updater.clear_state()  # Clear internal vars, avoids reloading oddities.
     updater.engine = "Github"
-    updater.user = "SpectrumQT"
-    updater.repo = "WWMI-Tools"
+    updater.user = "ZelbertYQ"
+    updater.repo = "WWMIT-ZH"
     # updater.addon = # define at top of module, MUST be done first
-    updater.website = "https://github.com/SpectrumQT/WWMI-Tools/releases"
+    updater.website = "https://github.com/ZelbertYQ/WWMIT-ZH/releases"
     updater.subfolder_path = "wwmi-tools"
     updater.current_version = bl_info["version"]
     updater.verbose = True  # make False for production default

@@ -9,14 +9,14 @@ sys.path.insert(0, str(Path(__file__).parent / 'libs'))
 
 bl_info = {
     "name": "WWMI Tools",
-    "version": (1, 5, 3),
+    "version": (1, 5, 3, 1),
     "wwmi_version": (0, 9, 6),
     "blender": (3, 6, 0),
     "author": "SpectrumQT, LeoTorreZ, SinsOfSeven, SilentNightSound, DarkStarSword",
     "location": "View3D > Sidebar > Tool Tab",
-    "description": "Wuthering Waves modding toolkit",
+    "description": "Wuthering Waves modding toolkit (Chinese Localization)",
     "category": "Object",
-    "tracker_url": "https://github.com/SpectrumQT/WWMI-Tools",
+    "tracker_url": "https://github.com/ZelbertYQ/WWMIT-ZH",
 }
 auto_load.init()
 
