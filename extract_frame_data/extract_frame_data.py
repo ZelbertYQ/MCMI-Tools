@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import time
 import json
@@ -217,6 +218,60 @@ configuration = Configuration(
 )
 
 
+def collect_raw_resources(output_directory, data_extractor: DataExtractor, vb_hash: str, dump_path: Path):
+    """Copy all raw frame dump files used for the given vb_hash into an ExtractResources subfolder,
+    including IB companion .txt files and a filtered log.txt so the folder can be used as a dump source."""
+    collect_dir = Path(output_directory) / vb_hash / 'ExtractResources'
+    collect_dir.mkdir(parents=True, exist_ok=True)
+
+    paths = set()
+    shapekey_hashes = set()
+
+    for draw_data in data_extractor.draw_data.values():
+        if draw_data.vb_hash != vb_hash:
+            continue
+        paths.update(draw_data.raw_resource_paths)
+        if draw_data.shapekey_hash:
+            shapekey_hashes.add(draw_data.shapekey_hash)
+
+    for sk_hash, sk_data in data_extractor.shape_key_data.items():
+        if sk_hash in shapekey_hashes:
+            paths.update(sk_data.raw_resource_paths)
+
+    call_ids = set()
+    for path in paths:
+        src = Path(path)
+        if not src.is_file():
+            continue
+        dest = collect_dir / src.name
+        if not dest.exists():
+            shutil.copyfile(src, dest)
+        # Track call ID for log filtering
+        m = re.match(r'^(\d+)-', src.name)
+        if m:
+            call_ids.add(m.group(1))
+        # IB .buf files have a companion .txt file used by the resource collector
+        if '-ib=' in src.name and src.suffix == '.buf':
+            txt_src = src.with_suffix('.txt')
+            if txt_src.is_file():
+                txt_dest = collect_dir / txt_src.name
+                if not txt_dest.exists():
+                    shutil.copyfile(txt_src, txt_dest)
+
+    # Write a filtered log.txt containing only the relevant call entries
+    src_log = Path(dump_path) / 'log.txt'
+    if src_log.is_file() and call_ids:
+        dest_log = collect_dir / 'log.txt'
+        with open(src_log, 'r') as f_in, open(dest_log, 'w') as f_out:
+            include = False
+            for line in f_in:
+                raw_call_id = line[0:6]
+                if raw_call_id.isnumeric():
+                    include = raw_call_id in call_ids
+                if include:
+                    f_out.write(line)
+
+
 def write_objects(output_directory, objects: Dict[str, ObjectData], allow_missing_shapekeys = False):
     output_directory = Path(output_directory)
 
@@ -347,6 +402,12 @@ def extract_frame_data(cfg):
         objects_to_write = output_builder.objects
 
     write_objects(resolve_path(cfg.extract_output_folder), objects_to_write, cfg.allow_missing_shapekeys)
+
+    if getattr(cfg, 'collect_extracted_resources', False):
+        output_dir_path = Path(resolve_path(cfg.extract_output_folder))
+        for vb_hash in objects_to_write:
+            collect_raw_resources(output_dir_path, data_extractor, vb_hash, dump_path)
+
     print(f"Execution time: %s seconds" % (time.time() - start_time))
 
     return output_builder

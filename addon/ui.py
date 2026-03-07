@@ -667,3 +667,4 @@ class DebugPanel(bpy.types.Panel):
         layout.row().prop(cfg, 'allow_missing_shapekeys', text=tr('allow_missing_shapekeys'))
         layout.row().prop(cfg, 'remove_temp_object', text=tr('remove_temp_object'))
         layout.row().prop(cfg, 'export_on_reload', text=tr('export_on_reload'))
+        layout.row().prop(cfg, 'collect_extracted_resources', text=tr('collect_extracted_resources'))

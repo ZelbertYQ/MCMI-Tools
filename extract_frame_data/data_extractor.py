@@ -22,6 +22,7 @@ class ShapeKeyData:
     shapekey_offset_buffer: ByteBuffer
     shapekey_vertex_id_buffer: ByteBuffer
     shapekey_vertex_offset_buffer: ByteBuffer
+    raw_resource_paths: tuple = ()
 
 
 @dataclass
@@ -44,6 +45,7 @@ class DrawData:
     skeleton_data_cb3: ByteBuffer
     shapekey_hash: Union[str, None]
     textures: List[ResourceDescriptor]
+    raw_resource_paths: list = field(default_factory=list)
 
 
 @dataclass
@@ -67,12 +69,14 @@ class DataExtractor:
         for call_branch in call_branches:
             if call_branch.shader_id != 'SHAPEKEY_CS_0':
                 continue
+            cs0_paths = []
             for branch_call in call_branch.calls:
                 self.verify_shader_hash(branch_call.call, call_branch.shader_id, 1)
+                cs0_paths.extend(rd.path for rd in branch_call.call.resources.values())
             # We don't need any data from this call, lets go deeper
-            self.handle_shapekey_cs_1(call_branch.nested_branches)
+            self.handle_shapekey_cs_1(call_branch.nested_branches, cs0_paths)
 
-    def handle_shapekey_cs_1(self, call_branches):
+    def handle_shapekey_cs_1(self, call_branches, parent_paths=None):
         for call_branch in call_branches:
             if call_branch.shader_id != 'SHAPEKEY_CS_1':
                 continue
@@ -80,11 +84,12 @@ class DataExtractor:
             for branch_call in call_branch.calls:
                 try:
                     self.verify_shader_hash(branch_call.call, call_branch.shader_id, 1)
-                    self.handle_shapekey_cs_2(call_branch.nested_branches)
+                    cs2_paths = self.handle_shapekey_cs_2(call_branch.nested_branches)
                 except Exception as e:
                     print(f'Warning! Failed to process Shape Key CS call {branch_call.call}, data may end up missing! (safe to ignore if no fatal errors)')
                     continue
 
+                cs1_paths = list(rd.path for rd in branch_call.call.resources.values())
                 shape_key_data = ShapeKeyData(
                     shapekey_hash=branch_call.resources['SHAPEKEY_OUTPUT'].hash,
                     shapekey_scale_hash=branch_call.resources['SHAPEKEY_SCALE_OUTPUT'].hash,
@@ -92,6 +97,7 @@ class DataExtractor:
                     shapekey_offset_buffer=branch_call.resources['SHAPEKEY_OFFSET_BUFFER'],
                     shapekey_vertex_id_buffer=branch_call.resources['SHAPEKEY_VERTEX_ID_BUFFER'],
                     shapekey_vertex_offset_buffer=branch_call.resources['SHAPEKEY_VERTEX_OFFSET_BUFFER'],
+                    raw_resource_paths=tuple(list(parent_paths or []) + cs1_paths + cs2_paths),
                 )
 
                 cached_shape_key_data = self.shape_key_data.get(shape_key_data.shapekey_hash, None)
@@ -103,6 +109,7 @@ class DataExtractor:
                         raise ValueError(f'dispatch params mismatch for SHAPEKEY_CS_1')
 
     def handle_shapekey_cs_2(self, call_branches):
+        cs2_paths = []
         for call_branch in call_branches:
             if call_branch.shader_id != 'SHAPEKEY_CS_2':
                 continue
@@ -113,9 +120,11 @@ class DataExtractor:
                 except Exception as e:
                     continue
                 outputs += 1
+                cs2_paths.extend(rd.path for rd in branch_call.call.resources.values())
             if outputs == 0:
                 raise ValueError(f'No outputs for shader {call_branch.shader_id}')
             # We don't need any data from this call as well, lets just ensure that it's here
+        return cs2_paths
 
     def handle_static_draw_vs(self, call_branches):
         for call_branch in call_branches:
@@ -210,6 +219,7 @@ class DataExtractor:
                     skeleton_data_cb3=branch_call.resources['SKELETON_DATA_BUFFER_CB3'],
                     textures=textures,
                     shapekey_hash=shapekey_hash,
+                    raw_resource_paths=[rd.path for rd in branch_call.call.resources.values()],
                 )
 
                 cached_draw_data = self.draw_data.get(draw_guid, None)
@@ -227,6 +237,7 @@ class DataExtractor:
                         cached_draw_data.texcoord_buffer = texcoord_buffer
 
                     cached_draw_data.textures.extend(textures)
+                    cached_draw_data.raw_resource_paths.extend(draw_data.raw_resource_paths)
 
     def verify_shader_hash(self, call, shader_id, max_call_shaders):
         if len(call.shaders) != max_call_shaders:

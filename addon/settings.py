@@ -434,6 +434,12 @@ class WWMI_Settings(bpy.types.PropertyGroup):
         default=False,
     ) # type: ignore
 
+    collect_extracted_resources: BoolProperty(
+        name="Collect Extracted Resources",
+        description="Copy all raw frame dump files (IB, VB, textures, shapekey buffers, etc.) used for the extracted object into an ExtractResources subfolder",
+        default=False,
+    ) # type: ignore
+
     # Service
 
     last_error_setting_name: StringProperty(
