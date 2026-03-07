@@ -1344,7 +1344,9 @@ def register():
     updater.repo = "WWMIT-ZH"
     # updater.addon = # define at top of module, MUST be done first
     updater.website = "https://github.com/ZelbertYQ/WWMIT-ZH/releases"
-    updater.subfolder_path = "wwmi-tools"
+    # subfolder_path not needed: addon __init__.py is at repo root,
+    # the top-level GitHub zip folder is stripped automatically during extraction.
+    updater.subfolder_path = None
     updater.current_version = bl_info["version"]
     updater.verbose = True  # make False for production default
     updater.backup_current = True  # True by default
@@ -1360,7 +1362,7 @@ def register():
     # reloading conditions.
     updater.fake_install = False  # Set to true to test callback/reloading.
     updater.show_popups = True
-    updater.version_min_update = (0, 0, 0)
+    updater.version_min_update = (1, 5, 3, 2)
     updater.version_max_update = None  # None or default for no max.
     updater.skip_tag = skip_tag_function  # min and max used in this function
     updater.select_link = select_link_function

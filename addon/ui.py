@@ -65,7 +65,9 @@ class WWMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
         layout = self.layout
         row = layout.row()
         row.alignment = 'RIGHT'
-        row.label(text="v"+".".join(str(i) for i in bl_info.get('version', (0, 0, 0))))
+        _ver = bl_info.get('version', (0, 0, 0))
+        _ver_str = ".".join(str(i) for i in _ver[:3]) + (".{:02d}".format(_ver[3]) if len(_ver) >= 4 else "")
+        row.label(text="v" + _ver_str)
 
     def invoke(self, context, event):
         return context.window_manager.invoke_props_dialog(self)
