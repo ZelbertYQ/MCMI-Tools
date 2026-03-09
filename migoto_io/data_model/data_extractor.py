@@ -178,7 +178,7 @@ class BlenderDataExtractor:
                 data = self.fetch_data(mesh.loops, 'bitangent_sign', numpy_type, size)
             elif semantic == Semantic.Color:
                 if hasattr(mesh, 'vertex_colors') and semantic_name in mesh.vertex_colors:
-                    # Legacy projects support (for object imported with WWMI Tools 1.3.5 or below)
+                    # Legacy projects support (for object imported with MCMI Tools 1.3.5 or below)
                     color_attribute = mesh.vertex_colors[semantic_name]
                 else:
                     color_attribute = mesh.color_attributes[semantic_name]

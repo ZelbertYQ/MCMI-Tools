@@ -199,9 +199,9 @@ class DataModelWWMI(DataModel):
 
         remapped_vgs_counts = []
 
-        if context.scene.wwmi_tools_settings.index_data_cache:
+        if context.scene.mcmi_tools_settings.index_data_cache:
             # Partial export is enabled and index buffer cache exists, lets load it
-            index_data = numpy.array(json.loads(context.scene.wwmi_tools_settings.index_data_cache)).ravel()
+            index_data = numpy.array(json.loads(context.scene.mcmi_tools_settings.index_data_cache)).ravel()
         else:
             if index_buffer is None:
                 raise ValueError(f'Failed to build blend remap: `Index` buffer does not exist!')

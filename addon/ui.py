@@ -46,16 +46,16 @@ def add_row_with_error_handler(layout, cfg, setting_names):
         return row
 
 
-class WWMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
+class MCMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
     """
     Wuthering Waves modding toolkit
     """
 
-    bl_idname = "WWMI_TOOLS_PT_SIDEBAR"
-    bl_label = "WWMI Tools"
+    bl_idname = "MCMI_TOOLS_PT_SIDEBAR"
+    bl_label = "MCMI Tools"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "WWMI Tools"
+    bl_category = "MCMI Tools"
     # bl_context = "objectmode"
 
     # @classmethod
@@ -72,7 +72,7 @@ class WWMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
         return context.window_manager.invoke_props_dialog(self)
 
     def draw(self, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         layout = self.layout
 
         prefs = addon_updater_ops.get_user_preferences(context)
@@ -102,22 +102,22 @@ class WWMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
             self.draw_menu_extract_frame_data(context)
 
     def draw_menu_tools_mode(self, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         layout = self.layout
 
-        layout.row().operator(WWMI_ApplyModifierForObjectWithShapeKeysOperator.bl_idname, text=tr('apply_modifier_sk'))
-        layout.row().operator(WWMI_MergeVertexGroups.bl_idname, text=tr('merge_vg'))
-        layout.row().operator(WWMI_FillGapsInVertexGroups.bl_idname, text=tr('fill_gaps_vg'))
-        layout.row().operator(WWMI_RemoveUnusedVertexGroups.bl_idname, text=tr('remove_unused_vg'))
-        layout.row().operator(WWMI_RemoveAllVertexGroups.bl_idname, text=tr('remove_all_vg'))
-        layout.row().operator(WWMI_CreateMergedObject.bl_idname, text=tr('create_merged'))
-        layout.row().operator(WWMI_ApplyMergedObjectSculpt.bl_idname, text=tr('apply_merged_sculpt'))
-        layout.row().operator(WWMI_ApplyMergedObjectSculptWithShapekeys.bl_idname, text=tr('apply_merged_sculpt_sk'))
-        layout.row().operator(WWMI_ConvertVertexColors.bl_idname, text=tr('convert_vertex_colors'))
+        layout.row().operator(MCMI_ApplyModifierForObjectWithShapeKeysOperator.bl_idname, text=tr('apply_modifier_sk'))
+        layout.row().operator(MCMI_MergeVertexGroups.bl_idname, text=tr('merge_vg'))
+        layout.row().operator(MCMI_FillGapsInVertexGroups.bl_idname, text=tr('fill_gaps_vg'))
+        layout.row().operator(MCMI_RemoveUnusedVertexGroups.bl_idname, text=tr('remove_unused_vg'))
+        layout.row().operator(MCMI_RemoveAllVertexGroups.bl_idname, text=tr('remove_all_vg'))
+        layout.row().operator(MCMI_CreateMergedObject.bl_idname, text=tr('create_merged'))
+        layout.row().operator(MCMI_ApplyMergedObjectSculpt.bl_idname, text=tr('apply_merged_sculpt'))
+        layout.row().operator(MCMI_ApplyMergedObjectSculptWithShapekeys.bl_idname, text=tr('apply_merged_sculpt_sk'))
+        layout.row().operator(MCMI_ConvertVertexColors.bl_idname, text=tr('convert_vertex_colors'))
         
 
     def draw_menu_export_mod(self, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         layout = self.layout
         
         layout.row()
@@ -162,7 +162,7 @@ class WWMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
 
 
     def draw_menu_import_object(self, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         layout = self.layout
         
         layout.row()
@@ -178,10 +178,10 @@ class WWMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
 
         layout.row()
 
-        layout.row().operator(WWMI_Import.bl_idname, text=tr('import_object'))
+        layout.row().operator(MCMI_Import.bl_idname, text=tr('import_object'))
 
     def draw_menu_extract_frame_data(self, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         layout = self.layout
         
         layout.row()
@@ -208,28 +208,28 @@ class WWMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
 
         layout.row()
 
-        layout.row().operator(WWMI_ExtractFrameData.bl_idname, text=tr('extract_frame_data'))
+        layout.row().operator(MCMI_ExtractFrameData.bl_idname, text=tr('extract_frame_data'))
 
 
-class WWMI_TOOLS_PT_SidePanelPartialExport(bpy.types.Panel):
+class MCMI_TOOLS_PT_SidePanelPartialExport(bpy.types.Panel):
     bl_label = "Partial Export"
-    bl_parent_id = "WWMI_TOOLS_PT_SIDEBAR"
+    bl_parent_id = "MCMI_TOOLS_PT_SIDEBAR"
     # bl_options = {'DEFAULT_CLOSED'}
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "WWMI Tools"
+    bl_category = "MCMI Tools"
     bl_options = {'HIDE_HEADER'}
-    bl_idname = 'wwmi_1'
+    bl_idname = 'mcmi_1'
     bl_order = 12
 
     @classmethod
     def poll(cls, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         return cfg.tool_mode == 'EXPORT_MOD' and cfg.partial_export
 
     def draw(self, context):
         layout = self.layout
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         box = layout.box()
         box.row().prop(cfg, 'export_index', text=tr('export_index'))
         box.row().prop(cfg, 'export_positions', text=tr('export_positions'))
@@ -240,19 +240,19 @@ class WWMI_TOOLS_PT_SidePanelPartialExport(bpy.types.Panel):
         box.row().prop(cfg, 'export_shapekeys', text=tr('export_shapekeys'))
 
 
-class WWMI_TOOLS_PT_SidePanelAdvancedExport(bpy.types.Panel):
+class MCMI_TOOLS_PT_SidePanelAdvancedExport(bpy.types.Panel):
     bl_label = " "
-    bl_idname = "WWMI_TOOLS_PT_ADVANCED_EXPORT"
-    bl_parent_id = "WWMI_TOOLS_PT_SIDEBAR"
+    bl_idname = "MCMI_TOOLS_PT_ADVANCED_EXPORT"
+    bl_parent_id = "MCMI_TOOLS_PT_SIDEBAR"
     # bl_options = {'DEFAULT_CLOSED'}
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "WWMI Tools"
+    bl_category = "MCMI Tools"
     bl_order = 10
 
     @classmethod
     def poll(cls, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         return cfg.tool_mode == 'EXPORT_MOD'
 
     def draw_header(self, context):
@@ -260,7 +260,7 @@ class WWMI_TOOLS_PT_SidePanelAdvancedExport(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
 
         if not cfg.partial_export:
             layout.row().prop(cfg, 'skip_known_cubemap_textures', text=tr('skip_known_cubemap_textures'))
@@ -272,19 +272,19 @@ class WWMI_TOOLS_PT_SidePanelAdvancedExport(bpy.types.Panel):
         layout.row().prop(cfg, 'partial_export', text=tr('partial_export'))
 
 
-class WWMI_TOOLS_PT_SidePanelModInfo(bpy.types.Panel):
+class MCMI_TOOLS_PT_SidePanelModInfo(bpy.types.Panel):
     bl_label = " "
-    bl_idname = "WWMI_TOOLS_PT_MOD_INFO"
-    bl_parent_id = "WWMI_TOOLS_PT_SIDEBAR"
+    bl_idname = "MCMI_TOOLS_PT_MOD_INFO"
+    bl_parent_id = "MCMI_TOOLS_PT_SIDEBAR"
     # bl_options = {'DEFAULT_CLOSED'}
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "WWMI Tools"
+    bl_category = "MCMI Tools"
     bl_order = 13
 
     @classmethod
     def poll(cls, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         return cfg.tool_mode == 'EXPORT_MOD' and not cfg.partial_export
 
     def draw_header(self, context):
@@ -292,7 +292,7 @@ class WWMI_TOOLS_PT_SidePanelModInfo(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         layout.row().prop(cfg, 'mod_name', text=tr('mod_name'))
         layout.row().prop(cfg, 'mod_author', text=tr('mod_author'))
         layout.row().prop(cfg, 'mod_desc', text=tr('mod_desc'))
@@ -300,19 +300,19 @@ class WWMI_TOOLS_PT_SidePanelModInfo(bpy.types.Panel):
         layout.row().prop(cfg, 'mod_logo', text=tr('mod_logo'))
 
 
-class WWMI_TOOLS_PT_SidePanelIniTemplate(bpy.types.Panel):
+class MCMI_TOOLS_PT_SidePanelIniTemplate(bpy.types.Panel):
     bl_label = " "
-    bl_idname = "WWMI_TOOLS_PT_INI_TEMPLATE"
-    bl_parent_id = "WWMI_TOOLS_PT_SIDEBAR"
+    bl_idname = "MCMI_TOOLS_PT_INI_TEMPLATE"
+    bl_parent_id = "MCMI_TOOLS_PT_SIDEBAR"
     bl_options = {'DEFAULT_CLOSED'}
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "WWMI Tools"
+    bl_category = "MCMI Tools"
     bl_order = 80
 
     @classmethod
     def poll(cls, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         return cfg.tool_mode == 'EXPORT_MOD' and not cfg.partial_export
 
     def draw_header(self, context):
@@ -320,7 +320,7 @@ class WWMI_TOOLS_PT_SidePanelIniTemplate(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
     
         row = add_row_with_error_handler(layout, cfg, ['use_custom_template', 'custom_template_source'])
 
@@ -333,7 +333,7 @@ class WWMI_TOOLS_PT_SidePanelIniTemplate(bpy.types.Panel):
         col_left.prop(cfg, 'custom_template_source', text=tr('custom_template_source'))
         
         if cfg.custom_template_source == 'INTERNAL':
-            layout.row().operator(WWMI_OpenIniTemplateEditor.bl_idname, text=tr('edit_template'))
+            layout.row().operator(MCMI_OpenIniTemplateEditor.bl_idname, text=tr('edit_template'))
 
         elif cfg.custom_template_source == 'EXTERNAL':
             row = add_row_with_error_handler(layout, cfg, 'custom_template_path')
@@ -343,45 +343,45 @@ class WWMI_TOOLS_PT_SidePanelIniTemplate(bpy.types.Panel):
             split = row.split(factor=0.5)
 
             col_left = split.column()
-            col_left.operator(WWMI_OpenIniTemplateEditor.bl_idname, text=tr('edit_template'))
+            col_left.operator(MCMI_OpenIniTemplateEditor.bl_idname, text=tr('edit_template'))
             
             col_right = split.column()
             if cfg.custom_template_live_update:
-                col_right.operator(WWMI_IniTemplateEditor_ToggleLiveUpdates.bl_idname, text=tr('stop_ini_updates'))
+                col_right.operator(MCMI_IniTemplateEditor_ToggleLiveUpdates.bl_idname, text=tr('stop_ini_updates'))
             else:
-                col_right.operator(WWMI_IniTemplateEditor_ToggleLiveUpdates.bl_idname, text=tr('start_ini_updates'))
+                col_right.operator(MCMI_IniTemplateEditor_ToggleLiveUpdates.bl_idname, text=tr('start_ini_updates'))
 
 
-class WWMI_TOOLS_PT_SidePanelExportFooter(bpy.types.Panel):
+class MCMI_TOOLS_PT_SidePanelExportFooter(bpy.types.Panel):
     bl_label = "Export"
-    bl_parent_id = "WWMI_TOOLS_PT_SIDEBAR"
+    bl_parent_id = "MCMI_TOOLS_PT_SIDEBAR"
     # bl_options = {'DEFAULT_CLOSED'}
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "WWMI Tools"
+    bl_category = "MCMI Tools"
     bl_options = {'HIDE_HEADER'}
     bl_order = 99
 
     @classmethod
     def poll(cls, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         return cfg.tool_mode == 'EXPORT_MOD'
     
     def draw(self, context):
         layout = self.layout
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         if cfg.custom_template_live_update:
-            layout.operator(WWMI_IniTemplateEditor_ToggleLiveUpdates.bl_idname, text=tr('stop_ini_updates'))
+            layout.operator(MCMI_IniTemplateEditor_ToggleLiveUpdates.bl_idname, text=tr('stop_ini_updates'))
         else:
-            layout.row().operator(WWMI_Export.bl_idname, text=tr('export_mod'))
+            layout.row().operator(MCMI_Export.bl_idname, text=tr('export_mod'))
 
 
 # @orientation_helper(axis_forward='-Z', axis_up='Y')
-class WWMI_Import(bpy.types.Operator):
+class MCMI_Import(bpy.types.Operator):
     """
     Import object extracted from frame dump data with WWMI
     """
-    bl_idname = "wwmi_tools.import_object"
+    bl_idname = "mcmi_tools.import_object"
     bl_label = "Import Object"
     bl_description = "Import object extracted from frame dump data with WWMI"
 
@@ -389,7 +389,7 @@ class WWMI_Import(bpy.types.Operator):
 
     def execute(self, context):
         try:
-            cfg = context.scene.wwmi_tools_settings
+            cfg = context.scene.mcmi_tools_settings
 
             clear_error(cfg)
 
@@ -403,11 +403,11 @@ class WWMI_Import(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class WWMI_Export(bpy.types.Operator):
+class MCMI_Export(bpy.types.Operator):
     """
     Export object as WWMI mod
     """
-    bl_idname = "wwmi_tools.export_mod"
+    bl_idname = "mcmi_tools.export_mod"
     bl_label = "Export Mod"
     bl_description = "Export object as WWMI mod"
 
@@ -416,7 +416,7 @@ class WWMI_Export(bpy.types.Operator):
         Calculates list of exported buffers and processed semantics based on partial export settings
         Speeds up export of single buffer up to 5 times compared to full export
         """
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
 
         if cfg.partial_export:
             # Loop data is used to create list of exported vertices, so there are only two options for partial export:
@@ -449,7 +449,7 @@ class WWMI_Export(bpy.types.Operator):
 
     def execute(self, context):
         try:
-            cfg = context.scene.wwmi_tools_settings
+            cfg = context.scene.mcmi_tools_settings
 
             clear_error(cfg)
 
@@ -463,17 +463,17 @@ class WWMI_Export(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class WWMI_ExtractFrameData(bpy.types.Operator):
+class MCMI_ExtractFrameData(bpy.types.Operator):
     """
     Extract objects from frame dump
     """
-    bl_idname = "wwmi_tools.extract_frame_data"
+    bl_idname = "mcmi_tools.extract_frame_data"
     bl_label = "Extract Objects From Dump"
     bl_description = "Extract objects from frame dump"
 
     def execute(self, context):
         try:
-            cfg = context.scene.wwmi_tools_settings
+            cfg = context.scene.mcmi_tools_settings
 
             clear_error(cfg)
 
@@ -496,16 +496,16 @@ class WWMI_ExtractFrameData(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class WWMI_OpenIniTemplateEditor(bpy.types.Operator):
+class MCMI_OpenIniTemplateEditor(bpy.types.Operator):
     """
     Open current custom template in internal or external editor.
     """
-    bl_idname = "wwmi_tools.open_ini_template_editor"
+    bl_idname = "mcmi_tools.open_ini_template_editor"
     bl_label = "Edit Template"
     bl_description = "Open current custom template file in internal or external editor."
 
     def execute(self, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
 
         if cfg.custom_template_source == 'EXTERNAL':
             template_path = resolve_path(cfg.custom_template_path)
@@ -548,34 +548,34 @@ class WWMI_OpenIniTemplateEditor(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class WWMI_IniTemplateEditor_ToggleLiveUpdates(bpy.types.Operator):
-    bl_idname = "wwmi_tools.ini_template_start_live_updates"
+class MCMI_IniTemplateEditor_ToggleLiveUpdates(bpy.types.Operator):
+    bl_idname = "mcmi_tools.ini_template_start_live_updates"
     bl_label = "Start Ini Updates"
-    bl_description = "Once started, WWMI Tools will run export with current settings and start writing mod.ini on each template edit.\n"
+    bl_description = "Once started, MCMI Tools will run export with current settings and start writing mod.ini on each template edit.\n"
     "Warning! Mod export will be blocked until live updates are stopped!"
 
     def execute(self, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         if cfg.custom_template_live_update:
             cfg.custom_template_live_update = False
         else:
             cfg.custom_template_live_update = True
-            bpy.ops.wwmi_tools.export_mod()
+            bpy.ops.mcmi_tools.export_mod()
         return {'FINISHED'}
     
     @classmethod
     def poll(cls, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         return cfg.use_custom_template
 
 
-class WWMI_IniTemplateEditor_Reset(bpy.types.Operator):
-    bl_idname = "wwmi_tools.ini_template_editor_reset"
+class MCMI_IniTemplateEditor_Reset(bpy.types.Operator):
+    bl_idname = "mcmi_tools.ini_template_editor_reset"
     bl_label = "Reset Template"
     bl_description = "Warning! This action will reset custom template to default!"
 
     def execute(self, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         
         text_name = "CustomIniTemplate"
 
@@ -594,32 +594,32 @@ class WWMI_IniTemplateEditor_Reset(bpy.types.Operator):
         return context.window_manager.invoke_confirm(self, event)
     
 
-class WWMI_TOOLS_PT_TEXT_EDITOR_IniTemplate(bpy.types.Panel):
-    bl_label = "Ini Template - WWMI Tools"
+class MCMI_TOOLS_PT_TEXT_EDITOR_IniTemplate(bpy.types.Panel):
+    bl_label = "Ini Template - MCMI Tools"
     bl_space_type = "TEXT_EDITOR"
     bl_region_type = "UI"
     bl_category = "Text"
 
     def draw(self, context):
         layout = self.layout
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         
         if cfg.custom_template_live_update:
-            layout.operator(WWMI_IniTemplateEditor_ToggleLiveUpdates.bl_idname, text=tr('stop_ini_updates'))
+            layout.operator(MCMI_IniTemplateEditor_ToggleLiveUpdates.bl_idname, text=tr('stop_ini_updates'))
         else:
-            layout.operator(WWMI_IniTemplateEditor_ToggleLiveUpdates.bl_idname, text=tr('start_ini_updates'))
+            layout.operator(MCMI_IniTemplateEditor_ToggleLiveUpdates.bl_idname, text=tr('start_ini_updates'))
 
-        layout.operator(WWMI_IniTemplateEditor_Reset.bl_idname)
+        layout.operator(MCMI_IniTemplateEditor_Reset.bl_idname)
 
 
 class UpdaterPanel(bpy.types.Panel):
     """Update Panel"""
     bl_label = " "
-    bl_idname = "WWMI_TOOLS_PT_UpdaterPanel"
+    bl_idname = "MCMI_TOOLS_PT_UpdaterPanel"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     # bl_context = "objectmode"
-    bl_category = "WWMI Tools"
+    bl_category = "MCMI Tools"
     bl_order = 99
     bl_options = {'DEFAULT_CLOSED'}
 
@@ -649,11 +649,11 @@ class UpdaterPanel(bpy.types.Panel):
 class DebugPanel(bpy.types.Panel):
     """Debug Panel"""
     bl_label = " "
-    bl_idname = "WWMI_TOOLS_PT_DebugPanel"
+    bl_idname = "MCMI_TOOLS_PT_DebugPanel"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     # bl_context = "objectmode"
-    bl_category = "WWMI Tools"
+    bl_category = "MCMI Tools"
     bl_order = 80
     bl_options = {'DEFAULT_CLOSED'}
 
@@ -662,7 +662,7 @@ class DebugPanel(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
 
         layout.row().prop(cfg, 'allow_missing_shapekeys', text=tr('allow_missing_shapekeys'))
         layout.row().prop(cfg, 'remove_temp_object', text=tr('remove_temp_object'))

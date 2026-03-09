@@ -59,14 +59,14 @@ def _template_source_items(self, context):
     return r
 
 
-class WWMI_Settings(bpy.types.PropertyGroup):
+class MCMI_Settings(bpy.types.PropertyGroup):
 
     def on_update_clear_error(self, property_name):
         if self.last_error_setting_name == property_name:
             clear_error(self)
 
-    wwmi_tools_version: bpy.props.StringProperty(
-        name = "WWMI Tools Version",
+    mcmi_tools_version: bpy.props.StringProperty(
+        name = "MCMI Tools Version",
         default = '.'.join(map(str, bl_info["version"]))
     ) # type: ignore
 

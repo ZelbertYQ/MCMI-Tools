@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).parent / 'libs'))
 
 
 bl_info = {
-    "name": "WWMI Tools",
+    "name": "MCMI Tools",
     "version": (1, 5, 3, 4),
     "wwmi_version": (0, 9, 6),
     "blender": (3, 6, 0),
@@ -16,7 +16,7 @@ bl_info = {
     "location": "View3D > Sidebar > Tool Tab",
     "description": "Wuthering Waves modding toolkit (Chinese Localization)",
     "category": "Object",
-    "tracker_url": "https://github.com/ZelbertYQ/WWMIT-ZH",
+    "tracker_url": "https://github.com/ZelbertYQ/MCMI-Tools",
 }
 auto_load.init()
 
@@ -25,15 +25,15 @@ from .addon import settings
 
 
 def trigger_mod_export():
-    if bpy.context.scene.wwmi_tools_settings.export_on_reload:
+    if bpy.context.scene.mcmi_tools_settings.export_on_reload:
         print('Triggered export on addon reload...')
-        bpy.ops.wwmi_tools.export_mod()
+        bpy.ops.mcmi_tools.export_mod()
     
 
 def register():
     auto_load.register()
 
-    bpy.types.Scene.wwmi_tools_settings = bpy.props.PointerProperty(type=settings.WWMI_Settings)
+    bpy.types.Scene.mcmi_tools_settings = bpy.props.PointerProperty(type=settings.MCMI_Settings)
     
     # prefs = bpy.context.preferences.addons[__package__].preferences
     bpy.app.timers.register(trigger_mod_export, first_interval=0.1)
@@ -42,7 +42,7 @@ def register():
 def unregister():
     auto_load.unregister()
 
-    del bpy.types.Scene.wwmi_tools_settings
+    del bpy.types.Scene.mcmi_tools_settings
 
     if bpy.app.timers.is_registered(trigger_mod_export):
         bpy.app.timers.unregister(trigger_mod_export)

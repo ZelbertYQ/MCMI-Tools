@@ -19,7 +19,7 @@ class Version:
 
 @dataclass
 class ModInfo:
-    wwmi_tools_version: Version
+    mcmi_tools_version: Version
     required_wwmi_version: Version
     mod_name: str
     mod_author: str

@@ -9,7 +9,7 @@ from pathlib import Path
 from threading import Thread
 from datetime import datetime
 
-from ..addon.settings import WWMI_Settings
+from ..addon.settings import MCMI_Settings
 from ..migoto_io.blender_interface.utility import *
 from ..migoto_io.blender_interface.collections import *
 from ..migoto_io.blender_interface.objects import *
@@ -34,7 +34,7 @@ chached_template_string: Optional[Template] = None
 @dataclass
 class IniMaker:
     # Input
-    cfg: WWMI_Settings
+    cfg: MCMI_Settings
     mod_info: ModInfo
     extracted_object: ExtractedObject
     merged_object: MergedObject

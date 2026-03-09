@@ -6,19 +6,19 @@ from textwrap import dedent
 from ....language import tr
 
 
-class WWMI_TOOLS_PT_SidePanelIniToggles(bpy.types.Panel):
+class MCMI_TOOLS_PT_SidePanelIniToggles(bpy.types.Panel):
     bl_label = " "
-    bl_idname = "WWMI_TOOLS_PT_INI_TOGGLES"
-    bl_parent_id = "WWMI_TOOLS_PT_SIDEBAR"
+    bl_idname = "MCMI_TOOLS_PT_INI_TOGGLES"
+    bl_parent_id = "MCMI_TOOLS_PT_SIDEBAR"
     bl_options = {'DEFAULT_CLOSED'}
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "WWMI Tools"
+    bl_category = "MCMI Tools"
     bl_order = 81
 
     @classmethod
     def poll(cls, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         return cfg.tool_mode == 'EXPORT_MOD' and not cfg.partial_export
 
     def draw_header(self, context):
@@ -26,20 +26,20 @@ class WWMI_TOOLS_PT_SidePanelIniToggles(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
     
         layout.prop(cfg, 'use_ini_toggles', text=tr('use_ini_toggles'))
         
-        layout.operator("wwmi_tools.open_ini_toggles_import_export_editor", text=tr('open_ini_toggles_editor'))
+        layout.operator("mcmi_tools.open_ini_toggles_import_export_editor", text=tr('open_ini_toggles_editor'))
 
         layout.prop(cfg.ini_toggles, 'hide_empty_states', text=tr('hide_empty_states'))
         layout.prop(cfg.ini_toggles, 'hide_default_conditions', text=tr('hide_default_conditions'))
 
         row = layout.row()
-        row.operator("wwmi_tools.collapse_toggle_vars", icon="TRIA_DOWN", text=tr('collapse_vars'))
-        row.operator("wwmi_tools.expand_toggle_vars", icon="TRIA_RIGHT", text=tr('expand_vars'))
+        row.operator("mcmi_tools.collapse_toggle_vars", icon="TRIA_DOWN", text=tr('collapse_vars'))
+        row.operator("mcmi_tools.expand_toggle_vars", icon="TRIA_RIGHT", text=tr('expand_vars'))
 
-        layout.operator("wwmi_tools.add_toggle_var", text=tr('add_var'), icon="ADD")
+        layout.operator("mcmi_tools.add_toggle_var", text=tr('add_var'), icon="ADD")
 
         for i in reversed(range(len(cfg.ini_toggles.vars))):
             var = cfg.ini_toggles.vars[i]
@@ -60,19 +60,19 @@ class WWMI_TOOLS_PT_SidePanelIniToggles(bpy.types.Panel):
                 row.label(text=f'{var.name} {hotkeys}')
 
             if var.ui_expanded:
-                op = row.operator("wwmi_tools.add_var_state", text="", icon="ADD")
+                op = row.operator("mcmi_tools.add_var_state", text="", icon="ADD")
                 op.var_index = i
 
-            op = row.operator("wwmi_tools.edit_toggle_var", text="", icon="PREFERENCES")
+            op = row.operator("mcmi_tools.edit_toggle_var", text="", icon="PREFERENCES")
             op.var_index = i
             if not var.ui_expanded:
-                op = row.operator("wwmi_tools.move_toggle_var", icon='TRIA_UP', text="")
+                op = row.operator("mcmi_tools.move_toggle_var", icon='TRIA_UP', text="")
                 op.var_index = i
                 op.direction = 'UP'
-                op = row.operator("wwmi_tools.move_toggle_var", icon='TRIA_DOWN', text="")
+                op = row.operator("mcmi_tools.move_toggle_var", icon='TRIA_DOWN', text="")
                 op.var_index = i
                 op.direction = 'DOWN'
-            op = row.operator("wwmi_tools.remove_toggle_var", text="", icon="X")
+            op = row.operator("mcmi_tools.remove_toggle_var", text="", icon="X")
             op.var_index = i
 
             if var.ui_expanded:
@@ -112,15 +112,15 @@ class WWMI_TOOLS_PT_SidePanelIniToggles(bpy.types.Panel):
 
                     sub_row.alert = False
 
-                    op = sub_row.operator("wwmi_tools.add_var_state_object", text="", icon="ADD")
+                    op = sub_row.operator("mcmi_tools.add_var_state_object", text="", icon="ADD")
                     op.var_index = i
                     op.state_index = j
                     
-                    op = sub_row.operator("wwmi_tools.move_toggle_var_state", icon='TRIA_UP', text="")
+                    op = sub_row.operator("mcmi_tools.move_toggle_var_state", icon='TRIA_UP', text="")
                     op.var_index = i
                     op.state_index = j
                     op.direction = 'UP'
-                    op = sub_row.operator("wwmi_tools.move_toggle_var_state", icon='TRIA_DOWN', text="")
+                    op = sub_row.operator("mcmi_tools.move_toggle_var_state", icon='TRIA_DOWN', text="")
                     op.var_index = i
                     op.state_index = j
                     op.direction = 'DOWN'
@@ -129,7 +129,7 @@ class WWMI_TOOLS_PT_SidePanelIniToggles(bpy.types.Panel):
                         sub_row = sub_row.row()
                         sub_row.enabled = False 
 
-                    op = sub_row.operator("wwmi_tools.remove_var_state", text="", icon="X")
+                    op = sub_row.operator("mcmi_tools.remove_var_state", text="", icon="X")
                     op.var_index = i
                     op.state_index = j
 
@@ -153,58 +153,58 @@ class WWMI_TOOLS_PT_SidePanelIniToggles(bpy.types.Panel):
                         obj_row.prop(obj_item, "object", text="")
 
                         obj_row.alert = condition_error      
-                        op = obj_row.operator("wwmi_tools.edit_var_state_object", text="", icon="PREFERENCES")
+                        op = obj_row.operator("mcmi_tools.edit_var_state_object", text="", icon="PREFERENCES")
                         obj_row.alert = False      
                         op.var_index = i
                         op.state_index = j
                         op.object_index = k
                         
-                        op = obj_row.operator("wwmi_tools.remove_var_state_object", text="", icon="X")
+                        op = obj_row.operator("mcmi_tools.remove_var_state_object", text="", icon="X")
                         op.var_index = i
                         op.state_index = j
                         op.object_index = k
 
 
-class WWMI_TOOLS_OT_CollapseToggleVars(bpy.types.Operator):
-    bl_idname = "wwmi_tools.collapse_toggle_vars"
+class MCMI_TOOLS_OT_CollapseToggleVars(bpy.types.Operator):
+    bl_idname = "mcmi_tools.collapse_toggle_vars"
     bl_label = "Collapse Vars"
     bl_description = "Fold all vars in the list (exit edit mode for each var)"
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         for var in cfg.ini_toggles.vars:
             var.ui_expanded = False
         return {'FINISHED'}
     
 
-class WWMI_TOOLS_OT_ExpandToggleVars(bpy.types.Operator):
-    bl_idname = "wwmi_tools.expand_toggle_vars"
+class MCMI_TOOLS_OT_ExpandToggleVars(bpy.types.Operator):
+    bl_idname = "mcmi_tools.expand_toggle_vars"
     bl_label = "Expand Vars"
     bl_description = "Fold all vars in the list (enter edit mode for each var)"
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         for var in cfg.ini_toggles.vars:
             var.ui_expanded = True
         return {'FINISHED'}
 
 
-class WWMI_TOOLS_OT_AddToggleVar(bpy.types.Operator):
-    bl_idname = "wwmi_tools.add_toggle_var"
+class MCMI_TOOLS_OT_AddToggleVar(bpy.types.Operator):
+    bl_idname = "mcmi_tools.add_toggle_var"
     bl_label = "Add Toggle Var"
     bl_description = "Add new var to Ini Toggles, it will be used in mod.ini to control visibility of Objects listed in its States"
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         cfg.ini_toggles.add_new_var()
         return {'FINISHED'}
 
 
-class WWMI_TOOLS_OT_RemoveToggleVar(bpy.types.Operator):
-    bl_idname = "wwmi_tools.remove_toggle_var"
+class MCMI_TOOLS_OT_RemoveToggleVar(bpy.types.Operator):
+    bl_idname = "mcmi_tools.remove_toggle_var"
     bl_label = "Remove Toggle Var"
     bl_description = "Remove var from Ini Toggles"
     bl_options = {'REGISTER', 'UNDO'}
@@ -212,13 +212,13 @@ class WWMI_TOOLS_OT_RemoveToggleVar(bpy.types.Operator):
     var_index: bpy.props.IntProperty()  # type: ignore
 
     def execute(self, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         cfg.ini_toggles.vars.remove(self.var_index)
         return {'FINISHED'}
 
 
-class WWMI_TOOLS_OT_MoveToggleVar(bpy.types.Operator):
-    bl_idname = "wwmi_tools.move_toggle_var"
+class MCMI_TOOLS_OT_MoveToggleVar(bpy.types.Operator):
+    bl_idname = "mcmi_tools.move_toggle_var"
     bl_label = "Move Toggle Var"
     bl_description = "Move var in Ini Toggles list"
     bl_options = {'REGISTER', 'UNDO'}
@@ -227,7 +227,7 @@ class WWMI_TOOLS_OT_MoveToggleVar(bpy.types.Operator):
     direction: bpy.props.EnumProperty(items=[('UP', "Up", ""), ('DOWN', "Down", "")])  # type: ignore
 
     def execute(self, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
 
         if self.direction == 'UP':
             new_idx = self.var_index - 1
@@ -242,8 +242,8 @@ class WWMI_TOOLS_OT_MoveToggleVar(bpy.types.Operator):
 
 
 
-class WWMI_TOOLS_OT_EditToggleVar(bpy.types.Operator):
-    bl_idname = "wwmi_tools.edit_toggle_var"
+class MCMI_TOOLS_OT_EditToggleVar(bpy.types.Operator):
+    bl_idname = "mcmi_tools.edit_toggle_var"
     bl_label = "Edit Var"
     bl_description = "Configure var hotkey and default state"
     bl_options = {'REGISTER', 'UNDO'}
@@ -251,7 +251,7 @@ class WWMI_TOOLS_OT_EditToggleVar(bpy.types.Operator):
     var_index: bpy.props.IntProperty()  # type: ignore
 
     def draw(self, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         layout = self.layout
         
         layout.label(text=tr('toggle_var_settings'))
@@ -282,8 +282,8 @@ class WWMI_TOOLS_OT_EditToggleVar(bpy.types.Operator):
         return {'FINISHED'}
     
 
-class WWMI_TOOLS_OT_AddToggleVarState(bpy.types.Operator):
-    bl_idname = "wwmi_tools.add_var_state"
+class MCMI_TOOLS_OT_AddToggleVarState(bpy.types.Operator):
+    bl_idname = "mcmi_tools.add_var_state"
     bl_label = "Add State"
     bl_description = "Add new state to the var, each state may control visibility of multiple objects"
     bl_options = {'REGISTER', 'UNDO'}
@@ -291,14 +291,14 @@ class WWMI_TOOLS_OT_AddToggleVarState(bpy.types.Operator):
     var_index: bpy.props.IntProperty()  # type: ignore
 
     def execute(self, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         var = cfg.ini_toggles.vars[self.var_index]
         var.add_new_state()
         return {'FINISHED'}
 
 
-class WWMI_TOOLS_OT_RemoveToggleVarState(bpy.types.Operator):
-    bl_idname = "wwmi_tools.remove_var_state"
+class MCMI_TOOLS_OT_RemoveToggleVarState(bpy.types.Operator):
+    bl_idname = "mcmi_tools.remove_var_state"
     bl_label = "Remove State"
     bl_description = "Remove this state from Ini Toggles Var"
     bl_options = {'REGISTER', 'UNDO'}
@@ -307,14 +307,14 @@ class WWMI_TOOLS_OT_RemoveToggleVarState(bpy.types.Operator):
     state_index: bpy.props.IntProperty()  # type: ignore
 
     def execute(self, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         var = cfg.ini_toggles.vars[self.var_index]
         var.remove_state(self.state_index)
         return {'FINISHED'}
 
 
-class WWMI_TOOLS_OT_MoveToggleVarState(bpy.types.Operator):
-    bl_idname = "wwmi_tools.move_toggle_var_state"
+class MCMI_TOOLS_OT_MoveToggleVarState(bpy.types.Operator):
+    bl_idname = "mcmi_tools.move_toggle_var_state"
     bl_label = "Move Toggle Var State"
     bl_description = "Move var state in the list"
     bl_options = {'REGISTER', 'UNDO'}
@@ -324,7 +324,7 @@ class WWMI_TOOLS_OT_MoveToggleVarState(bpy.types.Operator):
     direction: bpy.props.EnumProperty(items=[('UP', "Up", ""), ('DOWN', "Down", "")])  # type: ignore
 
     def execute(self, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         var = cfg.ini_toggles.vars[self.var_index]
 
         if self.direction == 'UP':
@@ -340,8 +340,8 @@ class WWMI_TOOLS_OT_MoveToggleVarState(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class WWMI_TOOLS_OT_AddToggleVarStateObject(bpy.types.Operator):
-    bl_idname = "wwmi_tools.add_var_state_object"
+class MCMI_TOOLS_OT_AddToggleVarStateObject(bpy.types.Operator):
+    bl_idname = "mcmi_tools.add_var_state_object"
     bl_label = "Add object to state to make it conditionally visible"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -349,15 +349,15 @@ class WWMI_TOOLS_OT_AddToggleVarStateObject(bpy.types.Operator):
     state_index: bpy.props.IntProperty()  # type: ignore
 
     def execute(self, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         var = cfg.ini_toggles.vars[self.var_index]
         state = var.states[self.state_index]
         state.add_new_state_object(var.name)
         return {'FINISHED'}
 
 
-class WWMI_TOOLS_OT_RemoveToggleVarStateObject(bpy.types.Operator):
-    bl_idname = "wwmi_tools.remove_var_state_object"
+class MCMI_TOOLS_OT_RemoveToggleVarStateObject(bpy.types.Operator):
+    bl_idname = "mcmi_tools.remove_var_state_object"
     bl_label = "Remove State Object"
     bl_description = "Remove this object from the state"
     bl_options = {'REGISTER', 'UNDO'}
@@ -367,15 +367,15 @@ class WWMI_TOOLS_OT_RemoveToggleVarStateObject(bpy.types.Operator):
     object_index: bpy.props.IntProperty()  # type: ignore
 
     def execute(self, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         group = cfg.ini_toggles.vars[self.var_index]
         state = group.states[self.state_index]
         state.objects.remove(self.object_index)
         return {'FINISHED'}
 
 
-class WWMI_TOOLS_OT_EditVarStateObject(bpy.types.Operator):
-    bl_idname = "wwmi_tools.edit_var_state_object"
+class MCMI_TOOLS_OT_EditVarStateObject(bpy.types.Operator):
+    bl_idname = "mcmi_tools.edit_var_state_object"
     bl_label = "Edit Conditions"
     bl_description = "Open configuration window for custom conditions"
 
@@ -384,7 +384,7 @@ class WWMI_TOOLS_OT_EditVarStateObject(bpy.types.Operator):
     object_index: bpy.props.IntProperty()  # type: ignore
 
     def draw(self, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         layout = self.layout
         
         layout.label(text=tr('state_object_conditions'))
@@ -430,13 +430,13 @@ class WWMI_TOOLS_OT_EditVarStateObject(bpy.types.Operator):
             else:
                 split.prop(condition, "state", text="")
 
-            remove_op = split.operator("wwmi_tools.remove_condition", text="", icon='X')
+            remove_op = split.operator("mcmi_tools.remove_condition", text="", icon='X')
             remove_op.var_index = self.var_index
             remove_op.state_index = self.state_index
             remove_op.object_index = self.object_index
             remove_op.condition_index = i
 
-        add_op = layout.operator("wwmi_tools.add_condition")
+        add_op = layout.operator("mcmi_tools.add_condition")
         add_op.var_index = self.var_index
         add_op.state_index = self.state_index
         add_op.object_index = self.object_index
@@ -448,8 +448,8 @@ class WWMI_TOOLS_OT_EditVarStateObject(bpy.types.Operator):
         return {'FINISHED'}
     
 
-class WWMI_TOOLS_OT_AddToggleVarStateObjectCondition(bpy.types.Operator):
-    bl_idname = "wwmi_tools.add_condition"
+class MCMI_TOOLS_OT_AddToggleVarStateObjectCondition(bpy.types.Operator):
+    bl_idname = "mcmi_tools.add_condition"
     bl_label = "Add Condition"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -458,14 +458,14 @@ class WWMI_TOOLS_OT_AddToggleVarStateObjectCondition(bpy.types.Operator):
     object_index: bpy.props.IntProperty() # type: ignore
 
     def execute(self, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         obj = cfg.ini_toggles.vars[self.var_index].states[self.state_index].objects[self.object_index]
         obj.conditions.add()
         return {'FINISHED'}
 
 
-class WWMI_TOOLS_OT_RemoveToggleVarStateObjectCondition(bpy.types.Operator):
-    bl_idname = "wwmi_tools.remove_condition"
+class MCMI_TOOLS_OT_RemoveToggleVarStateObjectCondition(bpy.types.Operator):
+    bl_idname = "mcmi_tools.remove_condition"
     bl_label = "Remove Condition"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -475,20 +475,20 @@ class WWMI_TOOLS_OT_RemoveToggleVarStateObjectCondition(bpy.types.Operator):
     condition_index: bpy.props.IntProperty() # type: ignore
 
     def execute(self, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         obj = cfg.ini_toggles.vars[self.var_index].states[self.state_index].objects[self.object_index]
         if self.condition_index < len(obj.conditions):
             obj.conditions.remove(self.condition_index)
         return {'FINISHED'}
 
 
-class WWMI_TOOLS_OpenIniTogglesImportExportEditor(bpy.types.Operator):
-    bl_idname = "wwmi_tools.open_ini_toggles_import_export_editor"
+class MCMI_TOOLS_OpenIniTogglesImportExportEditor(bpy.types.Operator):
+    bl_idname = "mcmi_tools.open_ini_toggles_import_export_editor"
     bl_label = "Open Ini Toggles Import Export"
     bl_description = "Open text editor window for Ini Toggles Vars import or export"
 
     def execute(self, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
 
         text_name = "IniTogglesImportExportText"
 
@@ -504,10 +504,10 @@ class WWMI_TOOLS_OpenIniTogglesImportExportEditor(bpy.types.Operator):
             To "[Import]" Ini Toggles Vars:
             1. Create new text via button on the middle panel above (or clear this text)
             2. Paste Ini Toggles export text
-            3. Press "Import Ini Toggles" on side panel "Ini Toggles - WWMI Tools" to the right
+            3. Press "Import Ini Toggles" on side panel "Ini Toggles - MCMI Tools" to the right
 
             To "[Export]" Ini Toggles Vars:
-            1. Press "Export Ini Toggles" on side panel "Ini Toggles - WWMI Tools" to the right
+            1. Press "Export Ini Toggles" on side panel "Ini Toggles - MCMI Tools" to the right
             2. Copy generated export text
         """))
         text.cursor_set(0)
@@ -534,14 +534,14 @@ class WWMI_TOOLS_OpenIniTogglesImportExportEditor(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class WWMI_TOOLS_ExportIniToggles(bpy.types.Operator):
-    bl_idname = "wwmi_tools.export_ini_toggles"
+class MCMI_TOOLS_ExportIniToggles(bpy.types.Operator):
+    bl_idname = "mcmi_tools.export_ini_toggles"
     bl_label = "Export Ini Toggles"
     bl_description = "Output Ini Toggles Vars as importable .json text to IniTogglesExportText file of this Text Editor"
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         
         text_name = "IniTogglesExportText"
 
@@ -564,14 +564,14 @@ class WWMI_TOOLS_ExportIniToggles(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class WWMI_TOOLS_ImportIniToggles(bpy.types.Operator):
-    bl_idname = "wwmi_tools.import_ini_toggles"
+class MCMI_TOOLS_ImportIniToggles(bpy.types.Operator):
+    bl_idname = "mcmi_tools.import_ini_toggles"
     bl_label = "Import Ini Toggles"
     bl_description = "Import Ini Toggles Vars from .json text of current file"
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
         
         text = None
         for area in context.screen.areas:
@@ -603,16 +603,16 @@ class WWMI_TOOLS_ImportIniToggles(bpy.types.Operator):
         return {'FINISHED'}
     
 
-class WWMI_TOOLS_PT_TEXT_EDITOR_IniToggles(bpy.types.Panel):
-    bl_label = "Ini Toggles - WWMI Tools"
+class MCMI_TOOLS_PT_TEXT_EDITOR_IniToggles(bpy.types.Panel):
+    bl_label = "Ini Toggles - MCMI Tools"
     bl_space_type = "TEXT_EDITOR"
     bl_region_type = "UI"
     bl_category = "Text"
 
     def draw(self, context):
         layout = self.layout
-        cfg = context.scene.wwmi_tools_settings
-        layout.operator(WWMI_TOOLS_ExportIniToggles.bl_idname, text=tr('export_ini_toggles'))
-        layout.operator(WWMI_TOOLS_ImportIniToggles.bl_idname, text=tr('import_ini_toggles'))
+        cfg = context.scene.mcmi_tools_settings
+        layout.operator(MCMI_TOOLS_ExportIniToggles.bl_idname, text=tr('export_ini_toggles'))
+        layout.operator(MCMI_TOOLS_ImportIniToggles.bl_idname, text=tr('import_ini_toggles'))
         layout.prop(cfg.ini_toggles, 'replace_vars_on_import', text=tr('replace_vars_on_import'))
         layout.prop(cfg.ini_toggles, 'clear_vars_on_import', text=tr('clear_vars_on_import'))

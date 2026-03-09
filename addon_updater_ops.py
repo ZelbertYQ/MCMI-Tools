@@ -73,7 +73,7 @@ except Exception as e:
 # not match and have errors. Must be all lowercase and no spaces! Should also
 # be unique among any other addons that could exist (using this updater code),
 # to avoid clashes in operator registration.
-updater.addon = "wwmi_tools"
+updater.addon = "mcmi_tools"
 
 
 # -----------------------------------------------------------------------------
@@ -1341,9 +1341,9 @@ def register():
     updater.clear_state()  # Clear internal vars, avoids reloading oddities.
     updater.engine = "Github"
     updater.user = "ZelbertYQ"
-    updater.repo = "WWMIT-ZH"
+    updater.repo = "MCMI-Tools"
     # updater.addon = # define at top of module, MUST be done first
-    updater.website = "https://github.com/ZelbertYQ/WWMIT-ZH/releases"
+    updater.website = "https://github.com/ZelbertYQ/MCMI-Tools/releases"
     # subfolder_path not needed: addon __init__.py is at repo root,
     # the top-level GitHub zip folder is stripped automatically during extraction.
     updater.subfolder_path = None

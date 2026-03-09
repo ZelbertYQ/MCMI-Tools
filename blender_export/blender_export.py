@@ -189,7 +189,7 @@ class ModExporter:
         ini_maker = IniMaker(
             cfg=self.cfg,
             mod_info=ModInfo(
-                wwmi_tools_version=Version(self.cfg.wwmi_tools_version),
+                mcmi_tools_version=Version(self.cfg.mcmi_tools_version),
                 required_wwmi_version=Version(self.cfg.required_wwmi_version),
                 mod_name=self.cfg.mod_name,
                 mod_author=self.cfg.mod_author,

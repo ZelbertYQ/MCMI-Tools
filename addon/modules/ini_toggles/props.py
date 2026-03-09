@@ -143,7 +143,7 @@ class ToggleVar(bpy.types.PropertyGroup):
     ) # type: ignore
     
     def handle_name_update(self, context):
-        cfg = context.scene.wwmi_tools_settings
+        cfg = context.scene.mcmi_tools_settings
 
         if not self.name.strip():
             self.set_default_name(cfg.ini_toggles.vars)
@@ -339,7 +339,7 @@ class IniToggles(bpy.types.PropertyGroup):
         if format_version < '1.0':
             raise ValueError(f'Unknown data format version `{format_version}` (expected at least `1.0`)')
         if format_version > '1.0':
-            raise ValueError(f'Installed WWMI Tools version does not support `{format_version}` data format version, please check for available addon updates!')
+            raise ValueError(f'Installed MCMI Tools version does not support `{format_version}` data format version, please check for available addon updates!')
         
         vars_data = data['data']
 
