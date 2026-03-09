@@ -14,7 +14,8 @@ from ..migoto_io.blender_interface.utility import *
 from ..migoto_io.blender_interface.collections import *
 from ..migoto_io.blender_interface.objects import *
 from ..migoto_io.data_model.data_model import DataModel
-from ..migoto_io.data_model.byte_buffer import NumpyBuffer, MigotoFmt
+from ..migoto_io.data_model.byte_buffer import NumpyBuffer, MigotoFmt, AbstractSemantic, Semantic
+from ..migoto_io.data_model.dxgi_format import DXGIFormat
 from ..migoto_io.blender_tools.vertex_groups import remove_unused_vertex_groups
 
 from ..extract_frame_data.metadata_format import read_metadata
@@ -72,6 +73,17 @@ class ObjectImporter:
 
         with open(fmt_path, 'r') as fmt, open(ib_path, 'rb') as ib, open(vb_path, 'rb') as vb:
             migoto_fmt = MigotoFmt(fmt)
+
+            # Migrate old 3UV+2COLOR layout to 4UV+1COLOR
+            # Old WWMI-Tools incorrectly mapped TEXCOORD1 as COLOR1 (R16G16_UNORM)
+            color1 = migoto_fmt.vb_layout.get_element(AbstractSemantic(Semantic.Color, 1))
+            if color1 is not None and color1.format == DXGIFormat.R16G16_UNORM:
+                for sem in migoto_fmt.vb_layout.semantics:
+                    if sem.abstract.enum == Semantic.Color and sem.abstract.index == 1:
+                        sem.abstract = AbstractSemantic(Semantic.TexCoord, 1)
+                        sem.format = DXGIFormat.R16G16_FLOAT
+                    elif sem.abstract.enum == Semantic.TexCoord and sem.abstract.index >= 1:
+                        sem.abstract = AbstractSemantic(Semantic.TexCoord, sem.abstract.index + 1)
 
             index_buffer = NumpyBuffer(migoto_fmt.ib_layout)
             index_buffer.import_raw_data(ib.read())

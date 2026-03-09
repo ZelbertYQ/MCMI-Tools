@@ -35,9 +35,9 @@ class DataModelWWMI(DataModel):
         ]),
         'TexCoord': BufferLayout([
             BufferSemantic(AbstractSemantic(Semantic.TexCoord, 0), DXGIFormat.R16G16_FLOAT),
-            BufferSemantic(AbstractSemantic(Semantic.Color, 1), DXGIFormat.R16G16_UNORM),
             BufferSemantic(AbstractSemantic(Semantic.TexCoord, 1), DXGIFormat.R16G16_FLOAT),
             BufferSemantic(AbstractSemantic(Semantic.TexCoord, 2), DXGIFormat.R16G16_FLOAT),
+            BufferSemantic(AbstractSemantic(Semantic.TexCoord, 3), DXGIFormat.R16G16_FLOAT),
         ]),
         'ShapeKeyOffset': BufferLayout([
             BufferSemantic(AbstractSemantic(Semantic.ShapeKey, 0), DXGIFormat.R32G32B32A32_UINT),
@@ -63,8 +63,6 @@ class DataModelWWMI(DataModel):
         self.format_converters = {
             # Reshape flat array [0,1,2,3,4,5] to [[0,1,2],[3,4,5]]
             AbstractSemantic(Semantic.Index): [lambda data: self.converter_reshape_second_dim(data, 3)],
-            # Trim color array [[1,1,0,0],[1,1,0,0]] to [[1,1],[1,1]]
-            AbstractSemantic(Semantic.Color, 1): [lambda data: self.converter_resize_second_dim(data, 2)],
         }
 
     def get_data(self, 
@@ -79,6 +77,18 @@ class DataModelWWMI(DataModel):
 
         if buffers_format is None:
             buffers_format = self.buffers_format
+
+        # Migrate old 3UV+2COLOR Metadata.json export format to 4UV+1COLOR
+        if 'TexCoord' in buffers_format:
+            texcoord_layout = buffers_format['TexCoord']
+            if texcoord_layout.get_element(AbstractSemantic(Semantic.Color, 1)):
+                buffers_format = dict(buffers_format)
+                buffers_format['TexCoord'] = BufferLayout([
+                    BufferSemantic(AbstractSemantic(Semantic.TexCoord, 0), DXGIFormat.R16G16_FLOAT),
+                    BufferSemantic(AbstractSemantic(Semantic.TexCoord, 1), DXGIFormat.R16G16_FLOAT),
+                    BufferSemantic(AbstractSemantic(Semantic.TexCoord, 2), DXGIFormat.R16G16_FLOAT),
+                    BufferSemantic(AbstractSemantic(Semantic.TexCoord, 3), DXGIFormat.R16G16_FLOAT),
+                ])
 
         build_blend_remaps = object_index_layout is not None and 'Blend' not in excluded_buffers
 

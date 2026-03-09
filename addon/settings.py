@@ -328,7 +328,7 @@ class MCMI_Settings(bpy.types.PropertyGroup):
 
     export_texcoords: BoolProperty(
         name="TexCoord Buffer",
-        description="Contains UVs and vertex color attribute named COLOR1",
+        description="Contains UVs (TEXCOORD0-TEXCOORD3)",
         default=True,
     ) # type: ignore
 

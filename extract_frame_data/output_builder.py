@@ -152,16 +152,16 @@ class OutputBuilder:
             ]),
         }
 
-        if vertex_buffer_layout.get_element(AbstractSemantic(Semantic.TexCoord, 2)):
+        if vertex_buffer_layout.get_element(AbstractSemantic(Semantic.TexCoord, 3)):
             export_format.update({
                 'Color': ExtractedObjectBuffer([
                     ExtractedObjectBufferSemantic(Semantic.Color, 0, DXGIFormat.R8G8B8A8_UNORM)
                 ]),
                 'TexCoord': ExtractedObjectBuffer([
                     ExtractedObjectBufferSemantic(Semantic.TexCoord, 0, DXGIFormat.R16G16_FLOAT),
-                    ExtractedObjectBufferSemantic(Semantic.Color, 1, DXGIFormat.R16G16_UNORM),
                     ExtractedObjectBufferSemantic(Semantic.TexCoord, 1, DXGIFormat.R16G16_FLOAT),
                     ExtractedObjectBufferSemantic(Semantic.TexCoord, 2, DXGIFormat.R16G16_FLOAT),
+                    ExtractedObjectBufferSemantic(Semantic.TexCoord, 3, DXGIFormat.R16G16_FLOAT),
                 ])
             })
         else:
