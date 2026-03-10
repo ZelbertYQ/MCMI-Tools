@@ -164,6 +164,11 @@ class ModExporter:
 
         self.merged_object.vertex_count = vertex_count
         self.merged_object.shapekeys.vertex_count = len(self.buffers.get('ShapeKeyVertexId', []))
+        shapekey_offsets = self.buffers.get('ShapeKeyOffset', None)
+        if shapekey_offsets is not None and len(shapekey_offsets) > 0:
+            self.merged_object.shapekeys.shapekey_count = max(0, len(shapekey_offsets) - 1)
+        else:
+            self.merged_object.shapekeys.shapekey_count = 0
 
         remapped_vgs_counts = self.buffers.pop('BlendRemapLayout', None)
         if remapped_vgs_counts is not None:

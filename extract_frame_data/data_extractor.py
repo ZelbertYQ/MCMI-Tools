@@ -54,7 +54,7 @@ class DataExtractor:
     call_branches: Dict[str, ShaderCallBranch]
     # Output
     shader_hashes: Dict[str, str] = field(init=False)
-    shape_key_data: Dict[str, ShapeKeyData] = field(init=False)
+    shape_key_data: Dict[str, list] = field(init=False)
     draw_data: Dict[tuple, DrawData] = field(init=False)
 
     def __post_init__(self):
@@ -82,6 +82,12 @@ class DataExtractor:
                 continue
 
             for branch_call in call_branch.calls:
+                dispatch = branch_call.call.parameters[CallParameters.Dispatch]
+                # ShapeKeyLoader is dispatched as (1, Y, 1). Skip misclassified calls
+                # (for example CS_0-like calls that would poison multi-batch merge).
+                if dispatch.ThreadGroupCountX != 1 or dispatch.ThreadGroupCountZ != 1:
+                    continue
+
                 try:
                     self.verify_shader_hash(branch_call.call, call_branch.shader_id, 1)
                     cs2_paths = self.handle_shapekey_cs_2(call_branch.nested_branches)
@@ -93,26 +99,16 @@ class DataExtractor:
                 shape_key_data = ShapeKeyData(
                     shapekey_hash=branch_call.resources['SHAPEKEY_OUTPUT'].hash,
                     shapekey_scale_hash=branch_call.resources['SHAPEKEY_SCALE_OUTPUT'].hash,
-                    dispatch_y=branch_call.call.parameters[CallParameters.Dispatch].ThreadGroupCountY,
+                    dispatch_y=dispatch.ThreadGroupCountY,
                     shapekey_offset_buffer=branch_call.resources['SHAPEKEY_OFFSET_BUFFER'],
                     shapekey_vertex_id_buffer=branch_call.resources['SHAPEKEY_VERTEX_ID_BUFFER'],
                     shapekey_vertex_offset_buffer=branch_call.resources['SHAPEKEY_VERTEX_OFFSET_BUFFER'],
                     raw_resource_paths=tuple(list(parent_paths or []) + cs1_paths + cs2_paths),
                 )
 
-                cached_shape_key_data = self.shape_key_data.get(shape_key_data.shapekey_hash, None)
-
-                if cached_shape_key_data is None:
-                    self.shape_key_data[shape_key_data.shapekey_hash] = shape_key_data
-                else:
-                    if shape_key_data.dispatch_y != cached_shape_key_data.dispatch_y:
-                        if shape_key_data.dispatch_y > cached_shape_key_data.dispatch_y:
-                            self.shape_key_data[shape_key_data.shapekey_hash] = shape_key_data
-                            print(f'Warning! Shapekey output {shape_key_data.shapekey_hash} seen with larger dispatch_y '
-                                  f'({cached_shape_key_data.dispatch_y} -> {shape_key_data.dispatch_y}), updating to larger value.')
-                        else:
-                            print(f'Warning! Shapekey output {shape_key_data.shapekey_hash} seen with smaller dispatch_y '
-                                  f'({shape_key_data.dispatch_y} < {cached_shape_key_data.dispatch_y}), keeping existing larger value.')
+                if shape_key_data.shapekey_hash not in self.shape_key_data:
+                    self.shape_key_data[shape_key_data.shapekey_hash] = []
+                self.shape_key_data[shape_key_data.shapekey_hash].append(shape_key_data)
 
     def handle_shapekey_cs_2(self, call_branches):
         cs2_paths = []
@@ -121,6 +117,11 @@ class DataExtractor:
                 continue
             outputs = 0
             for branch_call in call_branch.calls:
+                call_shader_hash = next(iter(branch_call.call.shaders.values())).hash
+                # Some dumps may place ShapeKeyLoader calls inside CS_2-tagged branches.
+                # Ignore those to avoid noisy hash-variant warnings.
+                if call_shader_hash == self.shader_hashes.get('SHAPEKEY_CS_1'):
+                    continue
                 try:
                     self.verify_shader_hash(branch_call.call, call_branch.shader_id, 1)
                 except Exception as e:

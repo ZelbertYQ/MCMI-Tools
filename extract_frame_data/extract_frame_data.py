@@ -235,9 +235,10 @@ def collect_raw_resources(output_directory, data_extractor: DataExtractor, vb_ha
         if draw_data.shapekey_hash:
             shapekey_hashes.add(draw_data.shapekey_hash)
 
-    for sk_hash, sk_data in data_extractor.shape_key_data.items():
+    for sk_hash, sk_data_list in data_extractor.shape_key_data.items():
         if sk_hash in shapekey_hashes:
-            paths.update(sk_data.raw_resource_paths)
+            for sk_data in sk_data_list:
+                paths.update(sk_data.raw_resource_paths)
 
     call_ids = set()
     for path in paths:

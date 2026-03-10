@@ -612,26 +612,26 @@ array = {{12 * merged_object.shapekeys.vertex_count}}
 {% endif %}
 {{note("Stores dynamically calculated CB required to override original Shape Keys CS call")}}
 [ResourceShapeKeyCBRW]
-{{note("Contains 128+128+8 values:")}}
-{{note("* 128 uint: Shape Key offsets (continuous lists of vertex offsets)")}}
-{{note("* 128 unorm: Shape Key values (range [0.0, 1.0])")}}
+{{note("Contains 256+256+8 values:")}}
+{{note("* 256 uint: Shape Key offsets (continuous lists of vertex offsets)")}}
+{{note("* 256 unorm: Shape Key values (range [0.0, 1.0])")}}
 {{note("* 8 uint: Shape Key CS settings")}}
 type = RWBuffer
 format = R32G32B32A32_UINT
-{{note("32 shapekey offsets, 32 shapekey values, 2 control flags")}}
-array = 66
+{{note("64 shapekey offsets, 64 shapekey values, 2 control flags")}}
+array = 130
 
 {{note("Stores values of custom Shape Keys and overrides for original ones")}}
 [ResourceCustomShapeKeyValuesRW]
-{{note("Contains 128 values, zero is shifted by 1.0 to the right")}}
+{{note("Contains 256 values, zero is shifted by 1.0 to the right")}}
 {{note("Expected value range is [1.0, 2.0]")}}
 {{note("* `0.0` means `no override`")}}
 {{note("* `1.0` means `override with zero`")}}
 {{note("* `2.0` means `override with one`")}}
 type = RWBuffer
 format = R32G32B32A32_FLOAT
-{{note("32 elements, 4 floats per element")}}
-array = 32
+{{note("64 elements, 4 floats per element")}}
+array = 64
 {%- endif %}
 
 ; Resources: Skeleton Override -------------------------

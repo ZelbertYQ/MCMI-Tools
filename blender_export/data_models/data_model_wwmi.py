@@ -14,6 +14,9 @@ from ...migoto_io.data_model.data_model import DataModel
 
 
 class DataModelWWMI(DataModel):
+    MAX_SHAPEKEY_OFFSET_SLOTS = 256
+    MAX_SHAPEKEY_COUNT = MAX_SHAPEKEY_OFFSET_SLOTS - 1
+
     buffers_format: Dict[str, BufferLayout] = {
         'Index': BufferLayout([
             BufferSemantic(AbstractSemantic(Semantic.Index), DXGIFormat.R32_UINT, stride=12)
@@ -159,7 +162,14 @@ class DataModelWWMI(DataModel):
         shapekeys = self.data_extractor.get_shapekey_data(obj, names_filter=list(shapekey_ids.values()), deduct_basis=True)
 
         shapekey_verts_count = 0
-        for group_id in range(128):
+        num_shapekeys = max(shapekey_ids.keys()) + 1 if shapekey_ids else 0
+        if num_shapekeys > self.MAX_SHAPEKEY_COUNT:
+            print(
+                f'Warning: Model has {num_shapekeys} shapekeys, but current MCMI core supports '
+                f'max {self.MAX_SHAPEKEY_COUNT}. Capping export.'
+            )
+            num_shapekeys = self.MAX_SHAPEKEY_COUNT
+        for group_id in range(num_shapekeys):
 
             shapekey = shapekeys.get(shapekey_ids.get(group_id, -1), None)
             if shapekey is None or not (-0.00000001 > numpy.min(shapekey) or numpy.max(shapekey) > 0.00000001):
@@ -178,6 +188,14 @@ class DataModelWWMI(DataModel):
             
         if len(shapekey_vertex_ids) == 0:
             return {}
+
+        # Add terminal offset (end cursor), then pad to fixed slot count expected by core shaders.
+        shapekey_offsets.append(shapekey_verts_count)
+        if len(shapekey_offsets) > self.MAX_SHAPEKEY_OFFSET_SLOTS:
+            shapekey_offsets = shapekey_offsets[:self.MAX_SHAPEKEY_OFFSET_SLOTS]
+            shapekey_offsets[-1] = shapekey_verts_count
+        else:
+            shapekey_offsets.extend([shapekey_verts_count] * (self.MAX_SHAPEKEY_OFFSET_SLOTS - len(shapekey_offsets)))
 
         shapekey_offsets = numpy.array(shapekey_offsets, dtype=numpy.uint32)
         

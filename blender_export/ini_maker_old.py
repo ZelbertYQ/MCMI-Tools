@@ -645,14 +645,14 @@ class IniMakerOld(IniMaker):
             section_type=SectionType.Resource,
         )
         self.ini.add_section(shapekey_cbrw, 6)
-        shapekey_cbrw.body.add_comment(r'Contains 128+128+8 values:')
+        shapekey_cbrw.body.add_comment(r'Contains 256+256+8 values:')
         shapekey_cbrw.body.add_comment(r'* 128 uint: Shape Key offsets (continuous lists of vertex offsets)')
         shapekey_cbrw.body.add_comment(r'* 128 unorm: Shape Key values (range [0.0, 1.0])')
         shapekey_cbrw.body.add_comment(r'* 8 uint: Shape Key CS settings')
         shapekey_cbrw.body.add_command(r'type = RWBuffer')
         shapekey_cbrw.body.add_command(r'format = R32G32B32A32_UINT')
-        shapekey_cbrw.body.add_comment(r'32 shapekey offsets, 32 shapekey values, 2 control flags')
-        shapekey_cbrw.body.add_command(r'array = 66')
+        shapekey_cbrw.body.add_comment(r'64 shapekey offsets, 64 shapekey values, 2 control flags')
+        shapekey_cbrw.body.add_command(r'array = 130')
 
         # [ResourceCustomShapeKeyValuesRW]
         custom_values = IniSection(
@@ -661,15 +661,15 @@ class IniMakerOld(IniMaker):
             section_type=SectionType.Resource,
         )
         self.ini.add_section(custom_values, 6)
-        custom_values.body.add_comment(r'Contains 128 values, zero is shifted by 1.0 to the right')
+        custom_values.body.add_comment(r'Contains 256 values, zero is shifted by 1.0 to the right')
         custom_values.body.add_comment(r'Expected value range is [1.0, 2.0]')
         custom_values.body.add_comment(r'* `0.0` means `no override`')
         custom_values.body.add_comment(r'* `1.0` means `override with zero`')
         custom_values.body.add_comment(r'* `2.0` means `override with one`')
         custom_values.body.add_command(r'type = RWBuffer')
         custom_values.body.add_command(r'format = R32G32B32A32_FLOAT')
-        custom_values.body.add_comment(r'32 elements, 4 floats per element')
-        custom_values.body.add_command(r'array = 32')
+        custom_values.body.add_comment(r'64 elements, 4 floats per element')
+        custom_values.body.add_command(r'array = 64')
 
     def make_skeleton_resources_group(self):
         self.ini.set_group_header(7, (

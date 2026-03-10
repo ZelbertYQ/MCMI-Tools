@@ -14,6 +14,8 @@ class ShapeKeys:
     scale_hash: str = ''
     dispatch_y: int = 0
     shapekey_offsets: list = field(default_factory=lambda: [])
+    # Sum of first 4 raw cb0 uint values (cb0[0].xyzw), used by ShapeKeyOverrider checksum
+    cb0_checksum: int = 0
     # ShapeKey ID based indexed list of {VertexID: VertexOffsets}
     shapekeys_index: List[Dict[int, List[float]]] = field(default_factory=lambda: [])
     # Vertex ID based indexed dict of {ShapeKeyID: VertexOffsets}
@@ -66,35 +68,80 @@ class ShapeKeys:
 
 @dataclass
 class ShapeKeyBuilder:
-    # Input
-    shapekey_data: Dict[str, ShapeKeyData]
+    # Input: Dict mapping output hash -> list of ShapeKeyData (one per CS_1 batch)
+    shapekey_data: Dict[str, list]
     # Output
     shapekeys: Dict[str, ShapeKeys] = field(init=False)
 
     def __post_init__(self):
         self.shapekeys = {}
 
-        for shapekey_hash, shapekey_data in self.shapekey_data.items():
+        for shapekey_hash, shapekey_data_list in self.shapekey_data.items():
 
-            shapekey_offsets = shapekey_data.shapekey_offset_buffer.get_values(AbstractSemantic(Semantic.RawData))[0:128]
-            vertex_ids = shapekey_data.shapekey_vertex_id_buffer.get_values(AbstractSemantic(Semantic.RawData))
-            vertex_offsets = shapekey_data.shapekey_vertex_offset_buffer.get_values(AbstractSemantic(Semantic.RawData))
+            # Parse cb0 from each batch and sort by base_offset (cb0[65].y)
+            batches = []
+            for sd in shapekey_data_list:
+                all_cb0_values = sd.shapekey_offset_buffer.get_values(AbstractSemantic(Semantic.RawData))
+                # cb0[65].y stores the base offset for this batch (0 for the first batch)
+                base_offset = all_cb0_values[65 * 4 + 1]
+                batches.append((base_offset, sd, all_cb0_values))
 
-            # Detect last non-zero entry in the vertex_offsets buffer consisting of 3 floats and 3 zeroes per row
-            # vertex_offsets_len = int(len(vertex_offsets) / 6)
-            # last_data_entry_id = vertex_offsets_len - 1
-            # for entry_id in reversed(range(vertex_offsets_len)):
-            #     vertex_offset = vertex_offsets[entry_id * 6:entry_id * 6 + 6]
-            #     if any(v != 0 for v in vertex_offset):
-            #         break
-            #     last_data_entry_id = entry_id
+            batches.sort(key=lambda x: x[0])
 
-            # Original buffer doesn't contain offset for 129th group, but we'll need it for the loop below
-            # last_shapekey_offset = shapekey_offsets[-1]
-            # if last_shapekey_offset > last_data_entry_id:
-            #     shapekey_offsets.append(last_shapekey_offset)
-            # else:
-            #     shapekey_offsets.append(last_data_entry_id + 1)
+            # Build combined offset list by merging all batches
+            # Each batch's cb0 rows 0-31 contain 128 uint offset values
+            # Offsets index into the shared t0/t1 buffers
+            # Non-first batches need their offsets shifted by base_offset
+            combined_offsets = []
+            for batch_idx, (base_offset, sd, all_cb0_values) in enumerate(batches):
+                raw_offsets = list(all_cb0_values[0:128])
+
+                # Find end of strictly monotonic region (padding starts where values stop increasing)
+                mono_count = 1
+                for i in range(1, 128):
+                    if raw_offsets[i] > raw_offsets[i - 1]:
+                        mono_count += 1
+                    else:
+                        break
+
+                if batch_idx == 0:
+                    # First batch: use offsets directly
+                    combined_offsets.extend(raw_offsets[:mono_count])
+                else:
+                    # Subsequent batches: shift by base_offset, skip first value (shared boundary)
+                    for i in range(1, mono_count):
+                        combined_offsets.append(base_offset + raw_offsets[i])
+
+            if len(batches) > 1:
+                print(f'ShapeKey multi-batch merge: {len(batches)} batches, {len(combined_offsets)} offsets, '
+                      f'{len(combined_offsets) - 1} shapekeys')
+
+            # Checksum from first batch's cb0[0:4]
+            first_cb0 = batches[0][2]
+            cb0_checksum = sum(first_cb0[0:4])
+
+            # Use first batch's t0/t1 buffers (shared across batches, same resource hash)
+            first_sd = batches[0][1]
+            vertex_ids = first_sd.shapekey_vertex_id_buffer.get_values(AbstractSemantic(Semantic.RawData))
+            vertex_offsets = first_sd.shapekey_vertex_offset_buffer.get_values(AbstractSemantic(Semantic.RawData))
+
+            # R32 vertex IDs and R16G16B16_FLOAT offsets are parallel arrays.
+            # Keep processing inside the shortest valid range.
+            max_entries = min(len(vertex_ids), len(vertex_offsets) // 6)
+
+            shapekey_offsets = combined_offsets
+
+            # Defensive clamp: malformed/misdetected offsets must not index outside buffers.
+            if shapekey_offsets:
+                clamped_offsets = []
+                prev = 0
+                for off in shapekey_offsets:
+                    safe_off = max(0, min(off, max_entries))
+                    if safe_off < prev:
+                        safe_off = prev
+                    clamped_offsets.append(safe_off)
+                    prev = safe_off
+                shapekey_offsets = clamped_offsets
 
             last_data_entry_id = shapekey_offsets[-1]
 
@@ -111,6 +158,8 @@ class ShapeKeyBuilder:
                 # Process all entries from current shapekey offset 'till offset of the next shapekey
                 entries = {}
                 for entry_id in range(first_entry_id, shapekey_offsets[shapekey_id + 1]):
+                    if entry_id >= max_entries:
+                        break
                     vertex_id = vertex_ids[entry_id]
                     vertex_offset = vertex_offsets[entry_id * 6:entry_id * 6 + 3]
                     entries[vertex_id] = vertex_offset
@@ -120,10 +169,11 @@ class ShapeKeyBuilder:
                 shapekeys_index.append(entries)
 
             self.shapekeys[shapekey_hash] = ShapeKeys(
-                offsets_hash=shapekey_data.shapekey_hash,
-                scale_hash=shapekey_data.shapekey_scale_hash,
-                dispatch_y=shapekey_data.dispatch_y,
+                offsets_hash=first_sd.shapekey_hash,
+                scale_hash=first_sd.shapekey_scale_hash,
+                dispatch_y=sum(sd.dispatch_y for _, sd, _ in batches),
                 shapekey_offsets=shapekey_offsets,
+                cb0_checksum=cb0_checksum,
                 shapekeys_index=shapekeys_index,
                 indexed_shapekeys=indexed_shapekeys,
             )

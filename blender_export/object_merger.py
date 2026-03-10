@@ -48,6 +48,7 @@ class MergedObjectComponent:
 @dataclass
 class MergedObjectShapeKeys:
     vertex_count: int = 0
+    shapekey_count: int = 0
 
 
 @dataclass
