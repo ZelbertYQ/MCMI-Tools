@@ -289,8 +289,9 @@ class BlenderDataExtractor:
         numpy_type = self.blender_data_formats[Semantic.ShapeKey].get_numpy_type()
 
         base_data = None
+        basis_key_block = obj.data.shape_keys.key_blocks[0] if obj.data.shape_keys else None
         if deduct_basis:
-            base_data = self.fetch_data(obj.data.shape_keys.key_blocks['Basis'].data, 'co', numpy_type)
+            base_data = self.fetch_data(basis_key_block.data, 'co', numpy_type)
 
         result = {}
 
@@ -298,7 +299,7 @@ class BlenderDataExtractor:
             if names_filter is not None:
                 if shapekey.name not in names_filter:
                     continue
-            elif deduct_basis and shapekey.name == 'Basis':
+            elif deduct_basis and shapekey == basis_key_block:
                 continue
 
             data = self.fetch_data(shapekey.data, 'co', numpy_type)

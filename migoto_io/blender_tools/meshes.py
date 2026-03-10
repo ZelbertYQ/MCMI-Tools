@@ -35,13 +35,9 @@ def create_merged_object(context):
     select_object(merged_obj)
     set_active_object(bpy.context, merged_obj)
 
-    # Set Basis as active shapekey if it exists (Blender tends to "forget" to do it and sculpt data goes to mesh.vertices lol)
+    # Set Basis (index 0) as active shapekey if it exists (Blender tends to "forget" to do it and sculpt data goes to mesh.vertices lol)
     if merged_obj.data.shape_keys is not None and len(getattr(merged_obj.data.shape_keys, 'key_blocks', [])) > 0:
-        key_blocks = merged_obj.data.shape_keys.key_blocks
-        basis = key_blocks.get("Basis")
-        if basis:
-            index = list(key_blocks).index(basis)
-            merged_obj.active_shape_key_index = index
+        merged_obj.active_shape_key_index = 0
 
 
 def transfer_position_data(context, apply_deltas_to_shapekeys = False):
@@ -75,8 +71,8 @@ def transfer_position_data(context, apply_deltas_to_shapekeys = False):
             position_data = numpy.empty(len(mesh.vertices), dtype=(numpy.float32, 3))
             mesh.vertices.foreach_get('undeformed_co', position_data.ravel())
         else:
-            # Merged object has shapekeys, fetch data from Basis shapekey
-            key_block = obj.data.shape_keys.key_blocks['Basis']
+            # Merged object has shapekeys, fetch data from first (Basis) shapekey
+            key_block = obj.data.shape_keys.key_blocks[0]
             position_data = numpy.empty(len(key_block.data), dtype=(numpy.float32, 3))
             key_block.data.foreach_get('co', position_data.ravel())
 
@@ -88,11 +84,11 @@ def transfer_position_data(context, apply_deltas_to_shapekeys = False):
                 # Target object has no shapekeys, write data to mesh
                 obj.data.vertices.foreach_set('co', position_data[offset:(offset+vertex_count)].ravel())
             else:
-                # Target object has shapekeys, write data to Basis shapekey
-                key_block = obj.data.shape_keys.key_blocks['Basis']
+                # Target object has shapekeys, write data to first (Basis) shapekey
+                key_block = obj.data.shape_keys.key_blocks[0]
                 # Apply sculpt to shapekeys
                 if apply_deltas_to_shapekeys:
-                    # Get vertex positions from Basis shapekey of original object
+                    # Get vertex positions from first (Basis) shapekey of original object
                     original_position_data = numpy.empty(len(key_block.data), dtype=(numpy.float32, 3))
                     key_block.data.foreach_get('co', original_position_data.ravel())
                     # Calculate vertex position deltas
@@ -100,7 +96,7 @@ def transfer_position_data(context, apply_deltas_to_shapekeys = False):
                     # Apply position deltas to shapekeys
                     shapekey_position_data = numpy.empty(len(key_block.data), dtype=(numpy.float32, 3))
                     for key in obj.data.shape_keys.key_blocks:
-                        if key.name == 'Basis':
+                        if key == key_block:
                             continue
                         key.data.foreach_get('co', shapekey_position_data.ravel())
                         shapekey_position_data -= position_data_diff
