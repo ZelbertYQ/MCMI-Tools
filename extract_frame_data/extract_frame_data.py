@@ -4,6 +4,7 @@ import sys
 import time
 import json
 import shutil
+import traceback
 
 from pathlib import Path
 from typing import Dict
@@ -272,6 +273,87 @@ def collect_raw_resources(output_directory, data_extractor: DataExtractor, vb_ha
                     f_out.write(line)
 
 
+def _iter_branch_resource_paths(call_branches):
+    """Recursively yield all raw resource file paths from call branches."""
+    for branch in call_branches.values() if isinstance(call_branches, dict) else call_branches:
+        for branch_call in branch.calls:
+            for rd in branch_call.call.resources.values():
+                if hasattr(rd, 'path') and rd.path:
+                    yield rd.path
+        if branch.nested_branches:
+            yield from _iter_branch_resource_paths(branch.nested_branches)
+
+
+def _copy_resource_files(paths, collect_dir, dump_path):
+    """Copy a set of file paths into collect_dir and return matched call IDs."""
+    call_ids = set()
+    for path in paths:
+        src = Path(path)
+        if not src.is_file():
+            continue
+        dest = collect_dir / src.name
+        if not dest.exists():
+            shutil.copyfile(src, dest)
+        m = re.match(r'^(\d+)-', src.name)
+        if m:
+            call_ids.add(m.group(1))
+        if '-ib=' in src.name and src.suffix == '.buf':
+            txt_src = src.with_suffix('.txt')
+            if txt_src.is_file():
+                txt_dest = collect_dir / txt_src.name
+                if not txt_dest.exists():
+                    shutil.copyfile(txt_src, txt_dest)
+    return call_ids
+
+
+def _write_filtered_log(dump_path, collect_dir, call_ids):
+    src_log = Path(dump_path) / 'log.txt'
+    if not src_log.is_file():
+        return
+    dest_log = collect_dir / 'log.txt'
+    if call_ids:
+        with open(src_log, 'r') as f_in, open(dest_log, 'w') as f_out:
+            include = False
+            for line in f_in:
+                raw_call_id = line[0:6]
+                if raw_call_id.isnumeric():
+                    include = raw_call_id in call_ids
+                if include:
+                    f_out.write(line)
+    else:
+        if not dest_log.exists():
+            shutil.copyfile(src_log, dest_log)
+
+
+def collect_resources_on_error(output_directory, call_branches, dump_path, error_msg: str):
+    """Resource collection fallback when the extraction pipeline fails and call branches are available.
+    Copies raw dump files referenced by call branches into ExtractError/ExtractResources."""
+    collect_dir = Path(output_directory) / 'ExtractError' / 'ExtractResources'
+    collect_dir.mkdir(parents=True, exist_ok=True)
+    paths = set(_iter_branch_resource_paths(call_branches))
+    call_ids = _copy_resource_files(paths, collect_dir, dump_path)
+    _write_filtered_log(dump_path, collect_dir, call_ids)
+    with open(collect_dir / 'error.txt', 'w', encoding='utf-8') as f:
+        f.write(error_msg)
+
+
+def collect_resources_on_error_from_dump(output_directory, dump, dump_path, error_msg: str):
+    """Resource collection fallback when even call branch parsing failed.
+    Copies ALL raw dump files from the Dump object into ExtractError/ExtractResources."""
+    collect_dir = Path(output_directory) / 'ExtractError' / 'ExtractResources'
+    collect_dir.mkdir(parents=True, exist_ok=True)
+    paths = set()
+    for call in dump.calls.values():
+        for rd in call.resources.values():
+            if hasattr(rd, 'path') and rd.path:
+                paths.add(rd.path)
+    # No call_ids filtering: copy log.txt as-is since we have no specific calls to filter
+    _copy_resource_files(paths, collect_dir, dump_path)
+    _write_filtered_log(dump_path, collect_dir, set())
+    with open(collect_dir / 'error.txt', 'w', encoding='utf-8') as f:
+        f.write(error_msg)
+
+
 def write_objects(output_directory, objects: Dict[str, ObjectData], allow_missing_shapekeys = False):
     output_directory = Path(output_directory)
 
@@ -346,48 +428,65 @@ def extract_frame_data(cfg):
         raise ConfigError('frame_dump_folder', 'Specified dump folder does not exist!')
     if not Path(dump_path / 'log.txt').is_file():
         raise ConfigError('frame_dump_folder', 'Specified dump folder is missing log.txt file!')
-    
-    # Create data model of the frame dump
-    dump = Dump(
-        dump_directory=dump_path
-    )
 
-    # Get data view from dump data model
-    frame_data = DataCollector(
-        dump=dump,
-        shader_data_pattern=configuration.shader_data_pattern,
-        shader_resources=configuration.shader_resources
-    )
+    collect_on_error = getattr(cfg, 'collect_extracted_resources', False)
+    dump = None
+    frame_data = None
 
-    # Extract mesh objects data from data view
-    data_extractor = DataExtractor(
-        call_branches=frame_data.call_branches
-    )
-
-    # Build shape keys index from byte buffers
-    shapekeys = ShapeKeyBuilder(
-        shapekey_data=data_extractor.shape_key_data
-    )
-
-    # Build components from byte buffers
-    component_builder = ComponentBuilder(
-        output_vb_layout=configuration.output_vb_layout,
-        shader_hashes=data_extractor.shader_hashes,
-        shapekeys=shapekeys.shapekeys,
-        draw_data=data_extractor.draw_data
-    )
-
-    # Build output data object
-    output_builder = OutputBuilder(
-        shapekeys=shapekeys.shapekeys,
-        mesh_objects=component_builder.mesh_objects,
-        texture_filter=TextureFilter(
-            min_file_size=cfg.skip_small_textures_size*1024 if cfg.skip_small_textures else 0,
-            exclude_extensions=['jpg'] if cfg.skip_jpg_textures else [],
-            exclude_same_slot_hash_textures=cfg.skip_same_slot_hash_textures,
-            exclude_hashes=['af26db30', '1320a071', '10d7937d', '87505b2b'] if cfg.skip_known_cubemap_textures else []
+    try:
+        # Create data model of the frame dump
+        dump = Dump(
+            dump_directory=dump_path
         )
-    )
+
+        # Get data view from dump data model
+        frame_data = DataCollector(
+            dump=dump,
+            shader_data_pattern=configuration.shader_data_pattern,
+            shader_resources=configuration.shader_resources
+        )
+
+        # Extract mesh objects data from data view
+        data_extractor = DataExtractor(
+            call_branches=frame_data.call_branches
+        )
+
+        # Build shape keys index from byte buffers
+        shapekeys = ShapeKeyBuilder(
+            shapekey_data=data_extractor.shape_key_data
+        )
+
+        # Build components from byte buffers
+        component_builder = ComponentBuilder(
+            output_vb_layout=configuration.output_vb_layout,
+            shader_hashes=data_extractor.shader_hashes,
+            shapekeys=shapekeys.shapekeys,
+            draw_data=data_extractor.draw_data
+        )
+
+        # Build output data object
+        output_builder = OutputBuilder(
+            shapekeys=shapekeys.shapekeys,
+            mesh_objects=component_builder.mesh_objects,
+            texture_filter=TextureFilter(
+                min_file_size=cfg.skip_small_textures_size*1024 if cfg.skip_small_textures else 0,
+                exclude_extensions=['jpg'] if cfg.skip_jpg_textures else [],
+                exclude_same_slot_hash_textures=cfg.skip_same_slot_hash_textures,
+                exclude_hashes=['af26db30', '1320a071', '10d7937d', '87505b2b'] if cfg.skip_known_cubemap_textures else []
+            )
+        )
+
+    except Exception:
+        if collect_on_error:
+            error_msg = traceback.format_exc()
+            output_dir = resolve_path(cfg.extract_output_folder)
+            if frame_data is not None and frame_data.call_branches:
+                # call_branches are available: intelligent per-call collection
+                collect_resources_on_error(output_dir, frame_data.call_branches, dump_path, error_msg)
+            elif dump is not None:
+                # DataCollector itself failed but Dump succeeded: collect all dump files
+                collect_resources_on_error_from_dump(output_dir, dump, dump_path, error_msg)
+        raise
 
     # Filter by IB hash if specified
     assign_hash = getattr(cfg, 'assign_hash', '').strip().lower()
@@ -403,7 +502,7 @@ def extract_frame_data(cfg):
 
     write_objects(resolve_path(cfg.extract_output_folder), objects_to_write, cfg.allow_missing_shapekeys)
 
-    if getattr(cfg, 'collect_extracted_resources', False):
+    if collect_on_error:
         output_dir_path = Path(resolve_path(cfg.extract_output_folder))
         for vb_hash in objects_to_write:
             collect_raw_resources(output_dir_path, data_extractor, vb_hash, dump_path)

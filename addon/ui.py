@@ -492,6 +492,16 @@ class MCMI_ExtractFrameData(bpy.types.Operator):
             
         except ConfigError as e:
             self.report({'ERROR'}, str(e))
+
+        except Exception as e:
+            if getattr(context.scene.mcmi_tools_settings, 'collect_extracted_resources', False):
+                self.report({'WARNING'}, dedent(f"""
+                    Extraction failed: {e}
+                    Raw resources were saved to ExtractError/ExtractResources in the output folder.
+                    Please share that folder for debugging.
+                """).strip())
+            else:
+                raise
             
         return {'FINISHED'}
 

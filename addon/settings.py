@@ -436,7 +436,7 @@ class MCMI_Settings(bpy.types.PropertyGroup):
 
     collect_extracted_resources: BoolProperty(
         name="Collect Extracted Resources",
-        description="Copy all raw frame dump files (IB, VB, textures, shapekey buffers, etc.) used for the extracted object into an ExtractResources subfolder",
+        description="Copy all raw frame dump files (IB, VB, textures, shapekey buffers, etc.) used for the extracted object into an ExtractResources subfolder. If extraction fails with an error, raw resources are saved to ExtractError/ExtractResources instead",
         default=False,
     ) # type: ignore
 
