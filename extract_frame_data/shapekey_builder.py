@@ -105,6 +105,9 @@ class ShapeKeyBuilder:
                 # Stop processing if next entries have no data
                 if first_entry_id >= last_data_entry_id:
                     break
+                # Guard: last element has no successor to read the next offset from
+                if shapekey_id + 1 >= len(shapekey_offsets):
+                    break
                 # Process all entries from current shapekey offset 'till offset of the next shapekey
                 entries = {}
                 for entry_id in range(first_entry_id, shapekey_offsets[shapekey_id + 1]):

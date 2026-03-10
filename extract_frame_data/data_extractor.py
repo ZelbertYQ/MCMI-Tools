@@ -106,7 +106,13 @@ class DataExtractor:
                     self.shape_key_data[shape_key_data.shapekey_hash] = shape_key_data
                 else:
                     if shape_key_data.dispatch_y != cached_shape_key_data.dispatch_y:
-                        raise ValueError(f'dispatch params mismatch for SHAPEKEY_CS_1')
+                        if shape_key_data.dispatch_y > cached_shape_key_data.dispatch_y:
+                            self.shape_key_data[shape_key_data.shapekey_hash] = shape_key_data
+                            print(f'Warning! Shapekey output {shape_key_data.shapekey_hash} seen with larger dispatch_y '
+                                  f'({cached_shape_key_data.dispatch_y} -> {shape_key_data.dispatch_y}), updating to larger value.')
+                        else:
+                            print(f'Warning! Shapekey output {shape_key_data.shapekey_hash} seen with smaller dispatch_y '
+                                  f'({shape_key_data.dispatch_y} < {cached_shape_key_data.dispatch_y}), keeping existing larger value.')
 
     def handle_shapekey_cs_2(self, call_branches):
         cs2_paths = []
@@ -247,4 +253,4 @@ class DataExtractor:
         if cached_shader_hash is None:
             self.shader_hashes[shader_id] = call_shader_hash
         elif cached_shader_hash != call_shader_hash:
-            raise ValueError(f'inconsistent shader hash {cached_shader_hash} for {shader_id}')
+            print(f'Warning! Shader hash variant detected for {shader_id}: expected {cached_shader_hash}, got {call_shader_hash}. Processing anyway.')
