@@ -1,4 +1,6 @@
 import subprocess
+import json
+import re
 import bpy
 
 from textwrap import dedent
@@ -21,6 +23,28 @@ from ..extract_frame_data.extract_frame_data import extract_frame_data
 
 from .modules.toolbox.ui import *
 from ..language import tr
+
+
+def parse_hash_filter_list(raw):
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return []
+    if not isinstance(data, list):
+        return []
+    result = []
+    for value in data:
+        if isinstance(value, str) and re.fullmatch(r'[a-fA-F0-9]{8}', value):
+            hash_value = value.lower()
+            if hash_value not in result:
+                result.append(hash_value)
+    return result
+
+
+def dump_hash_filter_list(hashes):
+    return json.dumps(sorted(hashes))
 
 
 def add_row_with_error_handler(layout, cfg, setting_names):
@@ -202,11 +226,16 @@ class MCMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
         if cfg.skip_small_textures:
             grid.prop(cfg, 'skip_small_textures_size', text=tr('skip_small_textures_size'))
 
-        layout.row().prop(cfg, 'skip_jpg_textures', text=tr('skip_jpg_textures'))
-        layout.row().prop(cfg, 'skip_known_cubemap_textures', text=tr('skip_known_cubemap_textures'))
-        layout.row().prop(cfg, 'skip_same_slot_hash_textures', text=tr('skip_same_slot_hash_textures'))
+        filter_col = layout.column(align=True)
+        filter_col.prop(cfg, 'skip_jpg_textures', text=tr('skip_jpg_textures'))
+        filter_col.prop(cfg, 'skip_known_cubemap_textures', text=tr('skip_known_cubemap_textures'))
+        filter_col.prop(cfg, 'skip_same_slot_hash_textures', text=tr('skip_same_slot_hash_textures'))
 
         layout.row()
+
+        row = layout.row(align=True)
+        row.operator(MCMI_AddShadingFilterHash.bl_idname, text=tr('add_shading_filter'))
+        row.operator(MCMI_RemoveShadingFilterHash.bl_idname, text=tr('remove_shading_filter'))
 
         layout.row().operator(MCMI_ExtractFrameData.bl_idname, text=tr('extract_frame_data'))
 
@@ -503,6 +532,43 @@ class MCMI_ExtractFrameData(bpy.types.Operator):
             else:
                 raise
             
+        return {'FINISHED'}
+
+
+class MCMI_AddShadingFilterHash(bpy.types.Operator):
+    bl_idname = "mcmi_tools.add_shading_filter_hash"
+    bl_label = "Add Shading Filter"
+    bl_description = "Add hash from Assign Hash field to internal shading filter list"
+
+    def execute(self, context):
+        cfg = context.scene.mcmi_tools_settings
+        hash_value = (cfg.assign_hash or '').strip().lower()
+        if re.fullmatch(r'[a-f0-9]{8}', hash_value) is None:
+            self.report({'ERROR'}, tr('invalid_hash_for_shading_filter'))
+            return {'FINISHED'}
+        filter_hashes = parse_hash_filter_list(cfg.shading_filter_hashes)
+        if hash_value not in filter_hashes:
+            filter_hashes.append(hash_value)
+        cfg.shading_filter_hashes = dump_hash_filter_list(filter_hashes)
+        self.report({'INFO'}, tr('added_hash_to_shading_filter').format(hash=hash_value))
+        return {'FINISHED'}
+
+
+class MCMI_RemoveShadingFilterHash(bpy.types.Operator):
+    bl_idname = "mcmi_tools.remove_shading_filter_hash"
+    bl_label = "Remove Shading Filter"
+    bl_description = "Remove hash from Assign Hash field from internal shading filter list"
+
+    def execute(self, context):
+        cfg = context.scene.mcmi_tools_settings
+        hash_value = (cfg.assign_hash or '').strip().lower()
+        if re.fullmatch(r'[a-f0-9]{8}', hash_value) is None:
+            self.report({'ERROR'}, tr('invalid_hash_for_shading_filter'))
+            return {'FINISHED'}
+        filter_hashes = parse_hash_filter_list(cfg.shading_filter_hashes)
+        filter_hashes = [item for item in filter_hashes if item != hash_value]
+        cfg.shading_filter_hashes = dump_hash_filter_list(filter_hashes)
+        self.report({'INFO'}, tr('removed_hash_from_shading_filter').format(hash=hash_value))
         return {'FINISHED'}
 
 

@@ -153,6 +153,12 @@ class MCMI_Settings(bpy.types.PropertyGroup):
         default='',
     ) # type: ignore
 
+    shading_filter_hashes: StringProperty(
+        name="Shading Filter Hashes",
+        description="Internal list of texture hashes excluded from diffuse auto-shading",
+        default='[]',
+    ) # type: ignore
+
     ########################################
     # Object Import
     ########################################

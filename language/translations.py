@@ -54,6 +54,11 @@ TRANSLATIONS = {
         'hide_default_conditions':          "Hide Default Conditions",
         'replace_vars_on_import':           "Replace Vars On Import",
         'clear_vars_on_import':             "Clear Vars On Import",
+        'add_shading_filter':              "Add To Shading Filter",
+        'remove_shading_filter':           "Remove From Shading Filter",
+        'invalid_hash_for_shading_filter': "Assign Hash must be 8 hex chars",
+        'added_hash_to_shading_filter':    "Added {hash} to shading filter",
+        'removed_hash_from_shading_filter':"Removed {hash} from shading filter",
         # --- Explicit labels ---
         'blender_42_warning':               "Blender 4.2 is not supported!",
         'blender_42_detail':                "This Blender version cannot handle custom split normals properly due to regression.",
@@ -191,6 +196,11 @@ TRANSLATIONS = {
         'hide_default_conditions':          "隐藏默认条件",
         'replace_vars_on_import':           "导入时替换变量",
         'clear_vars_on_import':             "导入时清空变量",
+        'add_shading_filter':               "移入着色过滤",
+        'remove_shading_filter':            "移除着色过滤",
+        'invalid_hash_for_shading_filter':  "指定哈希必须为8位十六进制",
+        'added_hash_to_shading_filter':     "已将 {hash} 加入着色过滤",
+        'removed_hash_from_shading_filter': "已将 {hash} 从着色过滤移除",
         # --- Explicit labels ---
         'blender_42_warning':               "不支持 Blender 4.2！",
         'blender_42_detail':                "此 Blender 版本因回归问题无法处理自定义分裂法线。",

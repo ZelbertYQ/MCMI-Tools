@@ -543,18 +543,12 @@ run = CustomShader\WWMIv1\ShapeKeyLoader
 hash = {{ extracted_object.shapekeys.offsets_hash }}
 match_priority = 0
 if $mod_enabled
-    {{note("Ensure that callback has WWMI filter_index of Shape Key Loader CS assigned")}}
     if cs == 3381.3333 && ResourceMergedSkeleton !== null
-        {{note("It looks like we can skip checking for THREAD_GROUP_COUNT_Y as UAV hashes are unique for each object")}}
-        {{note("Ensures that dispatch_y of Shape Key Loader CS call matches one from dump")}}
-        {{note("if THREAD_GROUP_COUNT_Y == %d" | format(extracted_object.shapekeys.dispatch_y))}}
-        {{note("Skip handling of original Shape Key Loader CS call to modify dispatch_y value")}}
         handling = skip
         {{note("Run custom Shape Key Overrider CS to prepare shape key resources for loading")}}
         run = CommandListSetupShapeKeys
         {{note("Run custom Shape Key Loader CS to load shape key resources")}}
         run = CommandListLoadShapeKeys
-        {{note("endif")}}
     endif
 endif
 
@@ -581,12 +575,7 @@ ResourceShapeKeyedPosition = copy ResourcePositionRW
 hash = {{ extracted_object.shapekeys.offsets_hash }}
 match_priority = 0
 if $mod_enabled
-    {{note("Ensure that callback has WWMI filter_index of Shape Key Multiplier CS assigned")}}
     if cs == 3381.4444 && ResourceMergedSkeleton !== null
-        {{note("It looks like we can skip checking for THREAD_GROUP_COUNT_Y as UAV hashes are unique for each object")}}
-        {{note("Ensures that dispatch_y of Shape Key Multiplier CS call matches one from dump")}}
-        {{note("if THREAD_GROUP_COUNT_Y == shapekeys.multiplier_dispatch_y")}}
-        {{note("Skip handling of original Shape Key Multiplier CS call to modify dispatch_y value")}}
         handling = skip
         {{note("Run custom Shape Key Multiplier CS to apply dynamic per-character multipliers")}}
         run = CommandListMultiplyShapeKeys
@@ -594,7 +583,6 @@ if $mod_enabled
         {{note("Runs custom Shape Key Applier CS to apply calculated offsets to xyz position data")}}
         run = CommandListApplyShapeKeys
         {%- endif %}
-        {{note("endif")}}
     endif
 endif
 

@@ -157,9 +157,18 @@ class DataModelWWMI(DataModel):
             if len(match) == 0:
                 continue
             shapekey_id = int(match[0])
-            shapekey_ids[shapekey_id] = shapekey.name
+            if shapekey_id not in shapekey_ids:
+                shapekey_ids[shapekey_id] = []
+            shapekey_ids[shapekey_id].append(shapekey.name)
 
-        shapekeys = self.data_extractor.get_shapekey_data(obj, names_filter=list(shapekey_ids.values()), deduct_basis=True)
+        for shapekey_id in shapekey_ids.keys():
+            shapekey_ids[shapekey_id].sort()
+
+        shapekey_names = []
+        for names in shapekey_ids.values():
+            shapekey_names.extend(names)
+
+        shapekeys = self.data_extractor.get_shapekey_data(obj, names_filter=shapekey_names, deduct_basis=True)
 
         shapekey_verts_count = 0
         num_shapekeys = max(shapekey_ids.keys()) + 1 if shapekey_ids else 0
@@ -171,7 +180,15 @@ class DataModelWWMI(DataModel):
             num_shapekeys = self.MAX_SHAPEKEY_COUNT
         for group_id in range(num_shapekeys):
 
-            shapekey = shapekeys.get(shapekey_ids.get(group_id, -1), None)
+            shapekey = None
+            for shapekey_name in shapekey_ids.get(group_id, []):
+                shapekey_part = shapekeys.get(shapekey_name, None)
+                if shapekey_part is None:
+                    continue
+                if shapekey is None:
+                    shapekey = shapekey_part.copy()
+                else:
+                    shapekey = shapekey + shapekey_part
             if shapekey is None or not (-0.00000001 > numpy.min(shapekey) or numpy.max(shapekey) > 0.00000001):
                 shapekey_offsets.extend([shapekey_verts_count if shapekey_verts_count != 0 else 0])
                 continue

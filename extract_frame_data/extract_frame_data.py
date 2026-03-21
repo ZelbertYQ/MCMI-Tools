@@ -5,6 +5,7 @@ import time
 import json
 import shutil
 import traceback
+import struct
 
 from pathlib import Path
 from typing import Dict
@@ -355,10 +356,99 @@ def collect_resources_on_error_from_dump(output_directory, dump, dump_path, erro
         f.write(error_msg)
 
 
-def write_objects(output_directory, objects: Dict[str, ObjectData], allow_missing_shapekeys = False):
+def get_image_size(image_path: Path):
+    try:
+        with open(image_path, 'rb') as f:
+            header = f.read(64)
+            if len(header) < 24:
+                return None, None
+            if header[:4] == b'DDS ':
+                f.seek(12)
+                height = struct.unpack('<I', f.read(4))[0]
+                width = struct.unpack('<I', f.read(4))[0]
+                return width, height
+            if header[:8] == b'\x89PNG\r\n\x1a\n':
+                width = struct.unpack('>I', header[16:20])[0]
+                height = struct.unpack('>I', header[20:24])[0]
+                return width, height
+            if header[:2] == b'\xff\xd8':
+                f.seek(2)
+                while True:
+                    marker_prefix = f.read(1)
+                    if marker_prefix != b'\xff':
+                        return None, None
+                    marker = f.read(1)
+                    while marker == b'\xff':
+                        marker = f.read(1)
+                    if marker in [b'\xc0', b'\xc1', b'\xc2', b'\xc3', b'\xc5', b'\xc6', b'\xc7', b'\xc9', b'\xca', b'\xcb', b'\xcd', b'\xce', b'\xcf']:
+                        f.read(3)
+                        height = struct.unpack('>H', f.read(2))[0]
+                        width = struct.unpack('>H', f.read(2))[0]
+                        return width, height
+                    segment_length_data = f.read(2)
+                    if len(segment_length_data) != 2:
+                        return None, None
+                    segment_length = struct.unpack('>H', segment_length_data)[0]
+                    if segment_length < 2:
+                        return None, None
+                    f.seek(segment_length - 2, 1)
+    except Exception:
+        return None, None
+    return None, None
+
+
+def build_deduped_texture_info(dump_path: Path):
+    deduped_texture_info = {}
+    deduped_path = Path(dump_path) / 'deduped'
+    if not deduped_path.is_dir():
+        return deduped_texture_info
+
+    hash_pattern = re.compile(r'([a-fA-F0-9]{8})')
+    format_pattern = re.compile(r'([A-Z0-9]+(?:_[A-Z0-9]+)*_(?:UNORM|SNORM|FLOAT)(?:_SRGB)?)')
+
+    for file_path in deduped_path.iterdir():
+        if not file_path.is_file():
+            continue
+        hash_result = hash_pattern.search(file_path.name)
+        if hash_result is None:
+            continue
+        texture_hash = hash_result.group(1).lower()
+        source_formats = []
+        for detected_format in format_pattern.findall(file_path.stem.upper()):
+            if detected_format not in source_formats:
+                source_formats.append(detected_format)
+        deduped_texture_info[texture_hash] = {
+            'deduped_file': file_path.name,
+            'source_formats': source_formats,
+        }
+
+    return deduped_texture_info
+
+
+def export_bc7_srgb_textures(object_directory: Path, texture_format, enabled=False):
+    if not enabled:
+        return
+    bc7_directory = object_directory / 'BC7_UNORM_SRGB'
+    bc7_directory.mkdir(parents=True, exist_ok=True)
+    for texture_info in texture_format.get('textures', {}).values():
+        source_formats = [fmt.upper() for fmt in texture_info.get('source_formats', []) if isinstance(fmt, str)]
+        if 'BC7_UNORM_SRGB' not in source_formats:
+            continue
+        texture_file = texture_info.get('file')
+        if not texture_file:
+            continue
+        source_texture_path = object_directory / texture_file
+        if source_texture_path.is_file():
+            shutil.copyfile(source_texture_path, bc7_directory / source_texture_path.name)
+
+
+def write_objects(output_directory, objects: Dict[str, ObjectData], allow_missing_shapekeys = False, deduped_texture_info=None):
     output_directory = Path(output_directory)
 
     output_directory.mkdir(parents=True, exist_ok=True)
+
+    if deduped_texture_info is None:
+        deduped_texture_info = {}
 
     for object_hash, object_data in objects.items():
         object_name = object_hash
@@ -374,6 +464,10 @@ def write_objects(output_directory, objects: Dict[str, ObjectData], allow_missin
 
         textures = {}
         texture_usage = {}
+        texture_format = {
+            'version': 1,
+            'textures': OrderedDict(),
+        }
         
         for component_id, component in enumerate(object_data.components):
 
@@ -399,24 +493,39 @@ def write_objects(output_directory, objects: Dict[str, ObjectData], allow_missin
 
                 textures[texture.hash]['components'].append(str(component_id))
 
-                if texture.get_slot() not in texture_usage[component_filename]:
-                    texture_usage[component_filename][texture.get_slot()] = []
-
+                slot = texture.get_slot()
+                if slot not in texture_usage[component_filename]:
+                    texture_usage[component_filename][slot] = []
                 shaders = '-'.join([shader.raw for shader in texture.shaders])
-                texture_usage[component_filename][texture.get_slot()].append(f'{texture.hash}-{shaders}')
+                texture_usage[component_filename][slot].append(f'{texture.hash}-{shaders}')
                 
             texture_usage[component_filename] = OrderedDict(sorted(texture_usage[component_filename].items()))
 
         for texture_hash, texture in textures.items():
             path = Path(texture['path'])
             components = '-'.join(sorted(list(set(texture['components']))))
-            shutil.copyfile(path, object_directory / f'Components-{components} t={texture_hash}{path.suffix}')
+            output_texture_filename = f'Components-{components} t={texture_hash}{path.suffix}'
+            shutil.copyfile(path, object_directory / output_texture_filename)
+            texture_hash_l = texture_hash.lower()
+            deduped_info = deduped_texture_info.get(texture_hash_l, {})
+            width, height = get_image_size(object_directory / output_texture_filename)
+            texture_components = sorted([int(component_id) for component_id in set(texture['components'])])
+            texture_format['textures'][texture_hash_l] = {
+                'file': output_texture_filename,
+                'source_formats': deduped_info.get('source_formats', []),
+                'size': [width, height] if width is not None and height is not None else [],
+                'components': texture_components,
+            }
             
         with open(object_directory / f'TextureUsage.json', "w") as f:
             f.write(json.dumps(texture_usage, indent=4))
 
         with open(object_directory / f'Metadata.json', "w") as f:
             f.write(object_data.metadata)
+
+        with open(object_directory / 'TextureFormat.json', "w") as f:
+            f.write(json.dumps(texture_format, indent=4))
+        export_bc7_srgb_textures(object_directory, texture_format, enabled=False)
 
 
 def extract_frame_data(cfg):
@@ -496,12 +605,15 @@ def extract_frame_data(cfg):
         target_vb_hash = ib_to_vb.get(assign_hash)
         if target_vb_hash is None:
             available = ', '.join(sorted(ib_to_vb.keys()))
-            raise ConfigError('assign_hash', f'IB hash "{assign_hash}" not found in frame dump!\nAvailable IB hashes: {available}')
-        objects_to_write = {k: v for k, v in output_builder.objects.items() if k == target_vb_hash}
+            print(f'Warning! IB hash "{assign_hash}" not found in frame dump, extraction will continue without IB hash filter. Available IB hashes: {available}')
+            objects_to_write = output_builder.objects
+        else:
+            objects_to_write = {k: v for k, v in output_builder.objects.items() if k == target_vb_hash}
     else:
         objects_to_write = output_builder.objects
 
-    write_objects(resolve_path(cfg.extract_output_folder), objects_to_write, cfg.allow_missing_shapekeys)
+    deduped_texture_info = build_deduped_texture_info(dump_path)
+    write_objects(resolve_path(cfg.extract_output_folder), objects_to_write, cfg.allow_missing_shapekeys, deduped_texture_info)
 
     if collect_on_error:
         output_dir_path = Path(resolve_path(cfg.extract_output_folder))
