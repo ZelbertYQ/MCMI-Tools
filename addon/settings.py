@@ -1,4 +1,5 @@
 import bpy
+import json
 
 from bpy.props import BoolProperty, StringProperty, PointerProperty, IntProperty, FloatProperty, CollectionProperty
 
@@ -59,6 +60,34 @@ def _template_source_items(self, context):
     return r
 
 
+def _lod_map_target_items(self, context):
+    r = [
+        ('LOD1', tr('lod1_map_target'), 'Edit or apply LOD1 mapping table'),
+        ('LOD2', tr('lod2_map_target'), 'Edit or apply LOD2 mapping table'),
+    ]
+    _lod_map_target_items._r = r
+    return r
+
+
+def _lod_map_profile_items(self, context):
+    r = [
+        ('AUTO', tr('lod_map_profile_auto'), 'Use mapping table matched by current Object Sources'),
+    ]
+    text = bpy.data.texts.get('MCMI_LodMaps')
+    if text is not None:
+        try:
+            data = json.loads(text.as_string())
+            characters = data.get('characters', {})
+            if isinstance(characters, dict):
+                for key in sorted(characters.keys()):
+                    if isinstance(key, str) and key.strip():
+                        r.append((key, key, f'Use mapping table profile `{key}`'))
+        except Exception:
+            pass
+    _lod_map_profile_items._r = r
+    return r
+
+
 class MCMI_Settings(bpy.types.PropertyGroup):
 
     def on_update_clear_error(self, property_name):
@@ -96,6 +125,19 @@ class MCMI_Settings(bpy.types.PropertyGroup):
         items=_tool_mode_items,
         update=lambda self, context: clear_error(self),
         default=2,
+    ) # type: ignore
+
+    enable_lod_mode: BoolProperty(
+        name="LOD",
+        description="Enable LOD1/LOD2 sources for import and export workflows",
+        default=False,
+    ) # type: ignore
+
+    lod_map_profile: bpy.props.EnumProperty(
+        name="LOD Map Profile",
+        description="Select mapping profile used for LOD export",
+        items=_lod_map_profile_items,
+        default=0,
     ) # type: ignore
 
     ########################################
@@ -169,6 +211,41 @@ class MCMI_Settings(bpy.types.PropertyGroup):
         default='',
         subtype="DIR_PATH",
         update=lambda self, context: self.on_update_clear_error('object_source_folder'),
+    ) # type: ignore
+
+    lod1_source_folder: StringProperty(
+        name="LOD1 Sources",
+        description="Directory with components and textures of LOD1 object",
+        default='',
+        subtype="DIR_PATH",
+        update=lambda self, context: self.on_update_clear_error('lod1_source_folder'),
+    ) # type: ignore
+
+    lod2_source_folder: StringProperty(
+        name="LOD2 Sources",
+        description="Directory with components and textures of LOD2 object",
+        default='',
+        subtype="DIR_PATH",
+        update=lambda self, context: self.on_update_clear_error('lod2_source_folder'),
+    ) # type: ignore
+
+    lod1_vg_map: StringProperty(
+        name="LOD1 VG Map",
+        description="Internal JSON mapping table from LOD0 vertex groups to LOD1 vertex groups",
+        default='{}',
+    ) # type: ignore
+
+    lod2_vg_map: StringProperty(
+        name="LOD2 VG Map",
+        description="Internal JSON mapping table from LOD0 vertex groups to LOD2 vertex groups",
+        default='{}',
+    ) # type: ignore
+
+    lod_map_target: bpy.props.EnumProperty(
+        name="LOD Map",
+        description="Select mapping table to edit in Text Editor",
+        items=_lod_map_target_items,
+        default=0,
     ) # type: ignore
 
     color_storage: bpy.props.EnumProperty(

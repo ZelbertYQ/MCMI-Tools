@@ -1,6 +1,7 @@
 import subprocess
 import json
 import re
+import os
 import bpy
 
 from textwrap import dedent
@@ -20,9 +21,11 @@ from ..blender_import.blender_import import blender_import
 from ..blender_export.blender_export import blender_export
 from ..blender_export.ini_maker import IniMaker
 from ..extract_frame_data.extract_frame_data import extract_frame_data
+from ..extract_frame_data.metadata_format import read_metadata
 
 from .modules.toolbox.ui import *
 from ..language import tr
+from ..migoto_io.blender_tools.vertex_groups import fill_gaps_in_vertex_groups, merge_vertex_groups
 
 
 def parse_hash_filter_list(raw):
@@ -45,6 +48,501 @@ def parse_hash_filter_list(raw):
 
 def dump_hash_filter_list(hashes):
     return json.dumps(sorted(hashes))
+
+
+def parse_component_id(name):
+    result = re.findall(r'component[ \-_]*([0-9]+)', (name or '').lower())
+    if len(result) == 0:
+        return None
+    return int(result[0])
+
+
+def get_collection_component_meshes(collection):
+    result = {}
+    for obj in get_collection_objects(collection, recursive=True, skip_hidden_collections=False):
+        if obj.type != 'MESH':
+            continue
+        component_id = parse_component_id(obj.name)
+        if component_id is None:
+            continue
+        if component_id not in result:
+            result[component_id] = []
+        result[component_id].append(obj)
+    for meshes in result.values():
+        meshes.sort(key=lambda item: item.name)
+    return result
+
+
+def get_vg_id(vg):
+    if vg.name.isdigit():
+        return int(vg.name)
+    return vg.index
+
+
+def get_vg_centers(objs):
+    if not isinstance(objs, list):
+        objs = [objs]
+    accum = {}
+    for obj in objs:
+        for vg in obj.vertex_groups:
+            vg_id = get_vg_id(vg)
+            if vg_id not in accum:
+                accum[vg_id] = [0.0, 0.0, 0.0, 0.0]
+            for vertex in obj.data.vertices:
+                weight = 0.0
+                for group in vertex.groups:
+                    if group.group == vg.index:
+                        weight = group.weight
+                        break
+                if weight <= 0:
+                    continue
+                co = vertex.co
+                accum[vg_id][0] += co.x * weight
+                accum[vg_id][1] += co.y * weight
+                accum[vg_id][2] += co.z * weight
+                accum[vg_id][3] += weight
+    centers = {}
+    for vg_id, values in accum.items():
+        if values[3] > 0:
+            centers[vg_id] = (values[0] / values[3], values[1] / values[3], values[2] / values[3])
+    return centers
+
+
+def get_vg_ids_from_meshes(meshes):
+    vg_ids = set()
+    for obj in meshes:
+        for vg in obj.vertex_groups:
+            vg_ids.add(get_vg_id(vg))
+    return vg_ids
+
+
+def calculate_vg_map(base_objs, target_objs):
+    vg_map = {}
+    base_centers = get_vg_centers(base_objs)
+    target_centers = get_vg_centers(target_objs)
+    base_vg_ids = get_vg_ids_from_meshes(base_objs)
+    target_vg_ids = get_vg_ids_from_meshes(target_objs)
+    if len(target_vg_ids) == 0:
+        return vg_map
+
+    for base_vg in sorted(base_vg_ids):
+        base_center = base_centers.get(base_vg, None)
+        if base_center is not None and len(target_centers) > 0:
+            best = None
+            best_dist = None
+            for target_vg, target_center in target_centers.items():
+                dx = base_center[0] - target_center[0]
+                dy = base_center[1] - target_center[1]
+                dz = base_center[2] - target_center[2]
+                dist = dx * dx + dy * dy + dz * dz
+                if best_dist is None or dist < best_dist:
+                    best_dist = dist
+                    best = target_vg
+        else:
+            best = sorted(target_vg_ids, key=lambda value: abs(value - base_vg))[0]
+        vg_map[str(base_vg)] = int(best)
+    return vg_map
+
+
+def build_lod_vg_map(base_collection, target_collection):
+    base_components = get_collection_component_meshes(base_collection)
+    target_components = get_collection_component_meshes(target_collection)
+    result = {}
+    component_ids = set(base_components.keys()) & set(target_components.keys())
+    for component_id in sorted(component_ids):
+        base_meshes = base_components.get(component_id, [])
+        target_meshes = target_components.get(component_id, [])
+        result[f'Component {component_id}'] = calculate_vg_map(base_meshes, target_meshes)
+    return result
+
+
+def build_lod_vg_map_merged(base_meshes, target_meshes):
+    return calculate_vg_map(base_meshes, target_meshes)
+
+
+def get_component_ids_from_source_folder(source_folder):
+    source_path = resolve_path(source_folder)
+    metadata_path = source_path / 'Metadata.json'
+    if not metadata_path.is_file():
+        return set()
+    try:
+        metadata = read_metadata(metadata_path)
+        components = getattr(metadata, 'components', [])
+        return set(range(len(components)))
+    except Exception:
+        return set()
+
+
+def get_component_vg_ids_from_source_folder(source_folder, use_local_ids=False):
+    source_path = resolve_path(source_folder)
+    metadata_path = source_path / 'Metadata.json'
+    if not metadata_path.is_file():
+        return {}
+    try:
+        metadata = read_metadata(metadata_path)
+        result = {}
+        for component_id, component in enumerate(getattr(metadata, 'components', [])):
+            vg_map = getattr(component, 'vg_map', {})
+            if isinstance(vg_map, dict):
+                if use_local_ids:
+                    ids = set(range(len(vg_map)))
+                else:
+                    ids = set()
+                    for value in vg_map.values():
+                        if isinstance(value, int):
+                            ids.add(value)
+                result[component_id] = ids
+        return result
+    except Exception:
+        return {}
+
+
+def get_all_vg_ids_from_source_folder(source_folder):
+    component_vg_ids = get_component_vg_ids_from_source_folder(source_folder)
+    result = set()
+    for ids in component_vg_ids.values():
+        result |= set(ids)
+    return result
+
+
+def ensure_vg_layout_on_collection(context, collection, source_folder, merged_mode):
+    component_meshes = get_collection_component_meshes(collection)
+    if merged_mode:
+        target_ids = sorted(get_all_vg_ids_from_source_folder(source_folder))
+        for meshes in component_meshes.values():
+            for obj in meshes:
+                existing = {get_vg_id(vg) for vg in obj.vertex_groups}
+                for vg_id in target_ids:
+                    if vg_id in existing:
+                        continue
+                    obj.vertex_groups.new(name=str(vg_id))
+                fill_gaps_in_vertex_groups(context, obj, internal_call=True)
+        return
+
+    target_ids_map = get_component_vg_ids_from_source_folder(source_folder, use_local_ids=True)
+    for component_id, meshes in component_meshes.items():
+        target_ids = sorted(target_ids_map.get(component_id, set()))
+        if len(target_ids) == 0:
+            continue
+        for obj in meshes:
+            existing = {get_vg_id(vg) for vg in obj.vertex_groups}
+            for vg_id in target_ids:
+                if vg_id in existing:
+                    continue
+                obj.vertex_groups.new(name=str(vg_id))
+            fill_gaps_in_vertex_groups(context, obj, internal_call=True)
+
+
+def merge_collection_meshes_for_mapping(context, collection):
+    meshes = [obj for obj in get_collection_objects(collection, recursive=True, skip_hidden_collections=False) if obj.type == 'MESH']
+    if len(meshes) <= 1:
+        return meshes[0] if len(meshes) == 1 else None
+    meshes = sorted(meshes, key=lambda obj: obj.name)
+    join_objects(context, meshes)
+    return meshes[0]
+
+
+def duplicate_collection_for_lod(context, source_collection, name_suffix):
+    scene_collection = context.scene.collection
+    duplicated = bpy.data.collections.new(f'{source_collection.name}_{name_suffix}')
+    scene_collection.children.link(duplicated)
+    for obj in get_collection_objects(source_collection, recursive=True, skip_hidden_collections=False):
+        copy_obj = obj.copy()
+        if obj.data is not None:
+            copy_obj.data = obj.data.copy()
+        duplicated.objects.link(copy_obj)
+    return duplicated
+
+
+def apply_lod_vg_map_to_collection(context, collection, lod_map):
+    component_meshes = get_collection_component_meshes(collection)
+    if isinstance(lod_map, dict) and all(str(key).isdigit() for key in lod_map.keys()):
+        for meshes in component_meshes.values():
+            for obj in meshes:
+                rename_vertex_groups_on_object(obj, lod_map)
+                merge_vertex_groups(context, obj)
+                fill_gaps_in_vertex_groups(context, obj, internal_call=True)
+        return
+    for component_name, vg_map in lod_map.items():
+        component_id = parse_component_id(component_name)
+        if component_id is None:
+            continue
+        meshes = component_meshes.get(component_id, [])
+        if len(meshes) == 0:
+            continue
+        for obj in meshes:
+            rename_vertex_groups_on_object(obj, vg_map)
+            merge_vertex_groups(context, obj)
+            fill_gaps_in_vertex_groups(context, obj, internal_call=True)
+
+
+def rename_vertex_groups_on_object(obj, vg_map):
+    if not isinstance(vg_map, dict) or len(vg_map) == 0:
+        return
+    for source_key, target_id in vg_map.items():
+        if not str(source_key).isdigit():
+            continue
+        if not isinstance(target_id, int):
+            continue
+        src_name = str(int(source_key))
+        dst_name = str(target_id)
+        if src_name == dst_name:
+            continue
+        src_group = obj.vertex_groups.get(src_name)
+        if src_group is None:
+            continue
+        src_group.name = f'{dst_name}.{src_name}'
+
+
+def remap_vertex_groups_on_object(obj, vg_map):
+    if not isinstance(vg_map, dict) or len(vg_map) == 0:
+        return
+    source_weights = {}
+    for source_key, target_id in vg_map.items():
+        if not str(source_key).isdigit():
+            continue
+        if not isinstance(target_id, int):
+            continue
+        src_name = str(int(source_key))
+        src_group = obj.vertex_groups.get(src_name)
+        if src_group is None:
+            continue
+        src_index = src_group.index
+        source_weights[src_name] = []
+        for vertex in obj.data.vertices:
+            for group in vertex.groups:
+                if group.group == src_index and group.weight > 0:
+                    source_weights[src_name].append((vertex.index, group.weight))
+                    break
+
+    for source_key, target_id in vg_map.items():
+        if not str(source_key).isdigit():
+            continue
+        if not isinstance(target_id, int):
+            continue
+        src_name = str(int(source_key))
+        dst_name = str(target_id)
+        if src_name == dst_name:
+            continue
+        dst_group = obj.vertex_groups.get(dst_name)
+        if dst_group is None:
+            dst_group = obj.vertex_groups.new(name=dst_name)
+        for vertex_index, weight in source_weights.get(src_name, []):
+            dst_group.add([vertex_index], weight, 'ADD')
+    for source_key, target_id in vg_map.items():
+        if not str(source_key).isdigit():
+            continue
+        src_name = str(int(source_key))
+        dst_name = str(target_id) if isinstance(target_id, int) else ''
+        if src_name == dst_name:
+            continue
+        src_group = obj.vertex_groups.get(src_name)
+        if src_group is not None:
+            obj.vertex_groups.remove(src_group)
+
+
+def parse_texture_hashes_from_folder(folder_path):
+    result = set()
+    if not os.path.isdir(folder_path):
+        return result
+    pattern_new = re.compile(r'.*t=([a-f0-9]{8}).*')
+    pattern_old = re.compile(r'.*component_\d-ps-t\d-([a-f0-9]{8}).*')
+    for filename in os.listdir(folder_path):
+        lower = filename.lower()
+        if not (lower.endswith('.dds') or lower.endswith('.jpg')):
+            continue
+        found = pattern_new.findall(lower)
+        if len(found) != 1:
+            found = pattern_old.findall(lower)
+        if len(found) == 1:
+            result.add(found[0])
+    return result
+
+
+def dedupe_lod_textures_and_ini(mod_folder, lod_hashes):
+    textures_dir = os.path.join(mod_folder, 'Textures')
+    if os.path.isdir(textures_dir):
+        for filename in os.listdir(textures_dir):
+            lower = filename.lower()
+            found = re.findall(r'.*t=([a-f0-9]{8}).*', lower)
+            if len(found) == 1 and found[0] in lod_hashes:
+                try:
+                    os.remove(os.path.join(textures_dir, filename))
+                except Exception:
+                    pass
+    ini_path = os.path.join(mod_folder, 'mod.ini')
+    if not os.path.isfile(ini_path):
+        return
+    with open(ini_path, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+    sections = []
+    current = []
+    for line in lines:
+        if line.startswith('[') and current:
+            sections.append(current)
+            current = [line]
+        else:
+            current.append(line)
+    if current:
+        sections.append(current)
+    filtered = []
+    for section in sections:
+        header = section[0].strip() if section else ''
+        hash_value = None
+        for line in section:
+            match = re.findall(r'^\s*hash\s*=\s*([a-f0-9]{8})\s*$', line.strip().lower())
+            if len(match) == 1:
+                hash_value = match[0]
+                break
+        if header.lower().startswith('[textureoverride') and hash_value is not None and hash_value in lod_hashes:
+            continue
+        filtered.extend(section)
+    with open(ini_path, 'w', encoding='utf-8') as f:
+        f.writelines(filtered)
+
+
+def parse_lod_map(raw):
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def get_character_map_key(source_folder):
+    source_path = resolve_path(source_folder)
+    metadata_path = source_path / 'Metadata.json'
+    if metadata_path.is_file():
+        try:
+            metadata = read_metadata(metadata_path)
+            vb0_hash = getattr(metadata, 'vb0_hash', '')
+            if vb0_hash:
+                return str(vb0_hash).lower()
+        except Exception:
+            pass
+    return source_path.name.lower()
+
+
+def get_selected_profile_key(cfg):
+    selected_profile = getattr(cfg, 'lod_map_profile', 'AUTO')
+    if selected_profile and selected_profile != 'AUTO':
+        return selected_profile
+    return get_character_map_key(cfg.object_source_folder)
+
+
+def get_lod_maps_text():
+    text_name = 'MCMI_LodMaps'
+    text = bpy.data.texts.get(text_name)
+    if text is None:
+        text = bpy.data.texts.new(text_name)
+        text.write(json.dumps({'characters': {}}, indent=4, ensure_ascii=False))
+    return text
+
+
+def get_profile_lod_map_text(profile_key):
+    text_name = profile_key
+    text = bpy.data.texts.get(text_name)
+    if text is None:
+        text = bpy.data.texts.new(text_name)
+    return text
+
+
+def parse_lod_maps_document(raw):
+    data = parse_lod_map(raw)
+    if 'characters' not in data or not isinstance(data['characters'], dict):
+        data = {'characters': {}}
+    return data
+
+
+def read_lod_maps_document():
+    text = get_lod_maps_text()
+    return parse_lod_maps_document(text.as_string())
+
+
+def write_lod_maps_document(doc):
+    text = get_lod_maps_text()
+    text.clear()
+    text.write(json.dumps(doc, indent=4, ensure_ascii=False))
+
+
+def save_lod_maps_for_character(cfg, lod1_map, lod2_map):
+    character_key = get_character_map_key(cfg.object_source_folder)
+    doc = read_lod_maps_document()
+    profile_data = {
+        'lod1': lod1_map if isinstance(lod1_map, dict) else {},
+        'lod2': lod2_map if isinstance(lod2_map, dict) else {},
+        'object_source_folder': str(resolve_path(cfg.object_source_folder)),
+    }
+    doc['characters'][character_key] = profile_data
+    write_lod_maps_document(doc)
+    profile_text = get_profile_lod_map_text(character_key)
+    profile_text.clear()
+    profile_text.write(json.dumps(profile_data, indent=4, ensure_ascii=False))
+    cfg.lod_map_profile = character_key
+
+
+def resolve_lod_maps_for_character(cfg):
+    character_key = get_selected_profile_key(cfg)
+    profile_text = bpy.data.texts.get(character_key)
+    if profile_text is not None:
+        profile_data = parse_lod_map(profile_text.as_string())
+        lod1_map = profile_data.get('lod1', {}) if isinstance(profile_data, dict) else {}
+        lod2_map = profile_data.get('lod2', {}) if isinstance(profile_data, dict) else {}
+        if isinstance(lod1_map, dict) and isinstance(lod2_map, dict) and (len(lod1_map) > 0 or len(lod2_map) > 0):
+            return lod1_map, lod2_map
+    doc = read_lod_maps_document()
+    character = doc.get('characters', {}).get(character_key, {})
+    lod1_map = character.get('lod1', {})
+    lod2_map = character.get('lod2', {})
+    if not isinstance(lod1_map, dict):
+        lod1_map = {}
+    if not isinstance(lod2_map, dict):
+        lod2_map = {}
+    if len(lod1_map) == 0:
+        lod1_map = parse_lod_map(getattr(cfg, 'lod1_vg_map', '{}'))
+    if len(lod2_map) == 0:
+        lod2_map = parse_lod_map(getattr(cfg, 'lod2_vg_map', '{}'))
+    return lod1_map, lod2_map
+
+
+def cleanup_temp_collection(collection):
+    if collection is None:
+        return
+    for obj in list(collection.objects):
+        try:
+            bpy.data.objects.remove(obj, do_unlink=True)
+        except ReferenceError:
+            continue
+        except Exception:
+            continue
+    try:
+        bpy.data.collections.remove(collection)
+    except Exception:
+        pass
+
+
+def keep_lod_temp_export_object(context, temp_collection, lod_name, lod_map=None, merged_mode=False):
+    candidates = []
+    for obj in list(temp_collection.objects):
+        if obj.name.startswith('TEMP_EXPORT_OBJECT'):
+            candidates.append(obj)
+    if len(candidates) == 0:
+        return
+    candidates.sort(key=lambda item: item.name)
+    export_obj = candidates[-1]
+    if merged_mode and isinstance(lod_map, dict) and all(str(key).isdigit() for key in lod_map.keys()):
+        remap_vertex_groups_on_object(export_obj, lod_map)
+        fill_gaps_in_vertex_groups(context, export_obj, internal_call=True)
+    target_name = f'TEMP_EXPORT_OBJECT_{lod_name}'
+    export_obj.name = target_name
+    if export_obj.name != target_name:
+        export_obj.name = target_name
+    if context.scene.collection not in export_obj.users_collection:
+        context.scene.collection.objects.link(export_obj)
+    if temp_collection in export_obj.users_collection:
+        temp_collection.objects.unlink(export_obj)
 
 
 def add_row_with_error_handler(layout, cfg, setting_names):
@@ -111,7 +609,9 @@ class MCMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
             layout.alert = False
             return
 
-        layout.row().prop(cfg, 'tool_mode', text=tr('tool_mode'))
+        row = layout.row(align=True)
+        row.prop(cfg, 'tool_mode', text=tr('tool_mode'))
+        row.prop(cfg, 'enable_lod_mode', text=tr('enable_lod_mode'), toggle=True)
 
         if cfg.tool_mode == 'TOOLS_MODE':
             self.draw_menu_tools_mode(context)
@@ -151,6 +651,14 @@ class MCMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
 
         row = add_row_with_error_handler(layout, cfg, 'object_source_folder')
         row.prop(cfg, 'object_source_folder', text=tr('object_source_folder'))
+        if cfg.enable_lod_mode:
+            row = add_row_with_error_handler(layout, cfg, 'lod1_source_folder')
+            row.prop(cfg, 'lod1_source_folder', text=tr('lod1_source_folder'))
+            row = add_row_with_error_handler(layout, cfg, 'lod2_source_folder')
+            row.prop(cfg, 'lod2_source_folder', text=tr('lod2_source_folder'))
+            row = layout.row(align=True)
+            row.prop(cfg, 'lod_map_profile', text=tr('lod_map_profile'))
+            row.operator(MCMI_OpenLodMapEditor.bl_idname, text=tr('open_lod_map_editor'))
 
         row = add_row_with_error_handler(layout, cfg, 'mod_output_folder')
         row.prop(cfg, 'mod_output_folder', text=tr('mod_output_folder'))
@@ -193,6 +701,11 @@ class MCMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
 
         row = add_row_with_error_handler(layout, cfg, 'object_source_folder')
         row.prop(cfg, 'object_source_folder', text=tr('object_source_folder'))
+        if cfg.enable_lod_mode:
+            row = add_row_with_error_handler(layout, cfg, 'lod1_source_folder')
+            row.prop(cfg, 'lod1_source_folder', text=tr('lod1_source_folder'))
+            row = add_row_with_error_handler(layout, cfg, 'lod2_source_folder')
+            row.prop(cfg, 'lod2_source_folder', text=tr('lod2_source_folder'))
 
         layout.row().prop(cfg, 'color_storage', text=tr('color_storage'))
         layout.row().prop(cfg, 'import_skeleton_type', text=tr('import_skeleton_type'))
@@ -405,6 +918,42 @@ class MCMI_TOOLS_PT_SidePanelExportFooter(bpy.types.Panel):
             layout.row().operator(MCMI_Export.bl_idname, text=tr('export_mod'))
 
 
+class MCMI_OpenLodMapEditor(bpy.types.Operator):
+    bl_idname = "mcmi_tools.open_lod_map_editor"
+    bl_label = "Open LOD Map"
+    bl_description = "Open generated LOD mapping table in Text Editor"
+
+    def execute(self, context):
+        cfg = context.scene.mcmi_tools_settings
+        profile_key = get_selected_profile_key(cfg)
+        existing_lod1, existing_lod2 = resolve_lod_maps_for_character(cfg)
+        doc = read_lod_maps_document()
+        doc['characters'][profile_key] = {
+            'lod1': existing_lod1 if isinstance(existing_lod1, dict) else {},
+            'lod2': existing_lod2 if isinstance(existing_lod2, dict) else {},
+            'object_source_folder': str(resolve_path(cfg.object_source_folder)),
+        }
+        write_lod_maps_document(doc)
+        text = get_profile_lod_map_text(profile_key)
+        text.clear()
+        text.write(json.dumps(doc['characters'][profile_key], indent=4, ensure_ascii=False))
+        new_window = bpy.ops.wm.window_new()
+        new_window_context = bpy.context.window_manager.windows[-1]
+        text_area = None
+        for area in new_window_context.screen.areas:
+            area.type = 'TEXT_EDITOR'
+            text_area = area
+            for space in area.spaces:
+                if space.type == 'TEXT_EDITOR':
+                    space.text = text
+        if text_area:
+            for region in text_area.regions:
+                if region.type == 'UI':
+                    bpy.ops.wm.context_toggle(data_path="space_data.show_region_ui")
+                    break
+        return {'FINISHED'}
+
+
 # @orientation_helper(axis_forward='-Z', axis_up='Y')
 class MCMI_Import(bpy.types.Operator):
     """
@@ -423,8 +972,86 @@ class MCMI_Import(bpy.types.Operator):
             clear_error(cfg)
 
             cfg.mod_skeleton_type = cfg.import_skeleton_type
-            
-            blender_import(self, context, cfg)
+
+            if not cfg.enable_lod_mode:
+                blender_import(self, context, cfg)
+            else:
+                source_folders = [cfg.object_source_folder]
+                if (cfg.lod1_source_folder or '').strip():
+                    source_folders.append(cfg.lod1_source_folder)
+                if (cfg.lod2_source_folder or '').strip():
+                    source_folders.append(cfg.lod2_source_folder)
+
+                imported_collections = []
+                original_source = cfg.object_source_folder
+                for source_folder in source_folders:
+                    before = {collection.name for collection in bpy.data.collections}
+                    cfg.object_source_folder = source_folder
+                    blender_import(self, context, cfg)
+                    after = {collection.name for collection in bpy.data.collections}
+                    created = sorted(list(after - before))
+                    if len(created) == 0:
+                        continue
+                    imported_collections.append(bpy.data.collections[created[-1]])
+                cfg.object_source_folder = original_source
+                mapping_collections = imported_collections
+                temp_mapping_collections = []
+                try:
+                    if cfg.import_skeleton_type == 'MERGED':
+                        for i, collection in enumerate(imported_collections):
+                            temp_collection = duplicate_collection_for_lod(context, collection, f'MapTmp_{i}')
+                            temp_mapping_collections.append(temp_collection)
+                        mapping_collections = temp_mapping_collections
+
+                    if cfg.import_skeleton_type == 'MERGED':
+                        merged_objects = [merge_collection_meshes_for_mapping(context, collection) for collection in mapping_collections]
+                        base_vg_ids = get_all_vg_ids_from_source_folder(source_folders[0]) if len(source_folders) >= 1 else set()
+                        if len(merged_objects) >= 2 and merged_objects[0] is not None and merged_objects[1] is not None:
+                            lod1_target_vg_ids = get_all_vg_ids_from_source_folder(source_folders[1])
+                            lod1_map = build_lod_vg_map_merged(
+                                [merged_objects[0]],
+                                [merged_objects[1]]
+                            )
+                            cfg.lod1_vg_map = json.dumps(lod1_map, ensure_ascii=False)
+                        else:
+                            lod1_map = {}
+                            cfg.lod1_vg_map = '{}'
+
+                        if len(merged_objects) >= 3 and merged_objects[0] is not None and merged_objects[2] is not None:
+                            lod2_target_vg_ids = get_all_vg_ids_from_source_folder(source_folders[2])
+                            lod2_map = build_lod_vg_map_merged(
+                                [merged_objects[0]],
+                                [merged_objects[2]]
+                            )
+                            cfg.lod2_vg_map = json.dumps(lod2_map, ensure_ascii=False)
+                        else:
+                            lod2_map = {}
+                            cfg.lod2_vg_map = '{}'
+                    else:
+                        if len(imported_collections) >= 2:
+                            lod1_map = build_lod_vg_map(
+                                mapping_collections[0],
+                                mapping_collections[1]
+                            )
+                            cfg.lod1_vg_map = json.dumps(lod1_map, ensure_ascii=False)
+                        else:
+                            lod1_map = {}
+                            cfg.lod1_vg_map = '{}'
+                        if len(imported_collections) >= 3:
+                            lod2_map = build_lod_vg_map(
+                                mapping_collections[0],
+                                mapping_collections[2]
+                            )
+                            cfg.lod2_vg_map = json.dumps(lod2_map, ensure_ascii=False)
+                        else:
+                            lod2_map = {}
+                            cfg.lod2_vg_map = '{}'
+                    save_lod_maps_for_character(cfg, lod1_map, lod2_map)
+                finally:
+                    for collection in temp_mapping_collections:
+                        cleanup_temp_collection(collection)
+
+                self.report({'INFO'}, tr('lod_mapping_built'))
 
         except ConfigError as e:
             self.report({'ERROR'}, str(e))
@@ -484,7 +1111,60 @@ class MCMI_Export(bpy.types.Operator):
 
             excluded_buffers = self.get_excluded_buffers(context)
 
-            blender_export(self, context, cfg, excluded_buffers)
+            if not cfg.enable_lod_mode:
+                blender_export(self, context, cfg, excluded_buffers)
+            else:
+                lod1_map, lod2_map = resolve_lod_maps_for_character(cfg)
+                original_component_collection = cfg.component_collection
+                original_object_source = cfg.object_source_folder
+                original_mod_output = cfg.mod_output_folder
+                try:
+                    blender_export(self, context, cfg, excluded_buffers)
+
+                    lod0_hashes = parse_texture_hashes_from_folder(cfg.object_source_folder)
+
+                    for lod_name, source_folder, lod_map in [
+                        ('LOD1', cfg.lod1_source_folder, lod1_map),
+                        ('LOD2', cfg.lod2_source_folder, lod2_map),
+                    ]:
+                        if not (source_folder or '').strip():
+                            continue
+                        if len(lod_map) == 0:
+                            self.report({'WARNING'}, f'{lod_name}: {tr("lod_mapping_missing")}')
+                            continue
+
+                        temp_collection = duplicate_collection_for_lod(context, original_component_collection, lod_name)
+                        try:
+                            apply_lod_vg_map_to_collection(context, temp_collection, lod_map)
+                            ensure_vg_layout_on_collection(
+                                context,
+                                temp_collection,
+                                source_folder,
+                                merged_mode=(cfg.mod_skeleton_type == 'MERGED')
+                            )
+
+                            cfg.component_collection = temp_collection
+                            cfg.object_source_folder = source_folder
+                            cfg.mod_output_folder = str(resolve_path(original_mod_output) / lod_name)
+
+                            blender_export(self, context, cfg, excluded_buffers)
+
+                            if not cfg.remove_temp_object:
+                                keep_lod_temp_export_object(
+                                    context,
+                                    temp_collection,
+                                    lod_name,
+                                    lod_map=lod_map,
+                                    merged_mode=(cfg.mod_skeleton_type == 'MERGED')
+                                )
+
+                            dedupe_lod_textures_and_ini(cfg.mod_output_folder, lod0_hashes)
+                        finally:
+                            cleanup_temp_collection(temp_collection)
+                finally:
+                    cfg.component_collection = original_component_collection
+                    cfg.object_source_folder = original_object_source
+                    cfg.mod_output_folder = original_mod_output
             
         except ConfigError as e:
             self.report({'ERROR'}, str(e))
