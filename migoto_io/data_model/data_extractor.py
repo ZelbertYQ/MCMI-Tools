@@ -11,6 +11,9 @@ from .byte_buffer import AbstractSemantic, Semantic, BufferSemantic, NumpyBuffer
 from .dxgi_format import DXGIFormat, DXGIType
 
 
+STABLE_VERTEX_ID_ATTRIBUTE = 'MCMI_VERTEX_ID'
+
+
 class BlenderDataExtractor:
     blender_data_formats: Dict[Semantic, DXGIFormat]
     blender_loop_semantics: List[Semantic] = [

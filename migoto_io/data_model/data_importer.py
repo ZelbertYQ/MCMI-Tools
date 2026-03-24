@@ -7,6 +7,9 @@ from .byte_buffer import AbstractSemantic, Semantic, BufferSemantic, NumpyBuffer
 from .dxgi_format import DXGIFormat, DXGIType
 
 
+STABLE_VERTEX_ID_ATTRIBUTE = 'MCMI_VERTEX_ID'
+
+
 class BlenderDataImporter:
 
     def set_data(self,
@@ -63,6 +66,7 @@ class BlenderDataImporter:
         self.import_texcoords(mesh, texcoords, vertex_ids)
         self.import_vertex_groups(obj, vg_indices, vg_weights)
         self.import_shapekeys(obj, shapekeys)
+        self.import_stable_vertex_ids(mesh)
 
         # Create edges and other missing metadata
         mesh.validate(verbose=False, clean_customdata=False)
@@ -98,6 +102,16 @@ class BlenderDataImporter:
                     data = converter(data.copy())
 
         return data
+
+    def import_stable_vertex_ids(self,
+                                 mesh: bpy.types.Mesh):
+
+        attribute = mesh.attributes.get(STABLE_VERTEX_ID_ATTRIBUTE)
+        if attribute is None:
+            attribute = mesh.attributes.new(name=STABLE_VERTEX_ID_ATTRIBUTE, type='INT', domain='POINT')
+
+        vertex_ids = numpy.arange(len(mesh.vertices), dtype=numpy.int32)
+        attribute.data.foreach_set('value', vertex_ids)
    
     def import_faces(self, 
                      mesh: bpy.types.Mesh, 

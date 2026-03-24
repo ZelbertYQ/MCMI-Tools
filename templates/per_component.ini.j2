@@ -37,6 +37,10 @@ global $mod_id = -1000
 global $mod_enabled = 0
 {{note("Indicates if our object was detected in previous frame")}}
 global $object_detected = 0
+{{note("If set to 1, only the first ShapeKey Loader callback per frame will be processed; later callbacks are skipped")}}
+global persist $mcmi_skip_second_shapekey_batch = 1
+{{note("Internal per-frame latch for ShapeKey Loader callback")}}
+global $mcmi_shapekey_loader_handled = 0
 {%- if cfg.use_ini_toggles %}
 ; Swap vars aka toggles defaults
 {%- for var in cfg.ini_toggles.vars %}
@@ -55,6 +59,7 @@ global {{ formatter.format_ini_drawvar(obj.name) }} = 1
 if $object_detected
     if $mod_enabled
         post $object_detected = 0
+        post $mcmi_shapekey_loader_handled = 0
         {%- if cfg.use_ini_toggles %}
         run = CommandListProcessToggles
         {%- endif %}
@@ -298,11 +303,16 @@ hash = {{ extracted_object.shapekeys.offsets_hash }}
 match_priority = 0
 if $mod_enabled
     if cs == 3381.3333
-        handling = skip
-        {{note("Run custom Shape Key Overrider CS to prepare shape key resources for loading")}}
-        run = CommandListSetupShapeKeys
-        {{note("Run custom Shape Key Loader CS to load shape key resources")}}
-        run = CommandListLoadShapeKeys
+        if $mcmi_skip_second_shapekey_batch == 1 && $mcmi_shapekey_loader_handled == 1
+            handling = skip
+        else
+            handling = skip
+            {{note("Run custom Shape Key Overrider CS to prepare shape key resources for loading")}}
+            run = CommandListSetupShapeKeys
+            {{note("Run custom Shape Key Loader CS to load shape key resources")}}
+            run = CommandListLoadShapeKeys
+            $mcmi_shapekey_loader_handled = 1
+        endif
     endif
 endif
 
