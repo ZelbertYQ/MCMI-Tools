@@ -14,8 +14,8 @@ from ...migoto_io.data_model.data_model import DataModel
 
 
 class DataModelWWMI(DataModel):
-    MAX_SHAPEKEY_OFFSET_SLOTS = 256
-    MAX_SHAPEKEY_COUNT = MAX_SHAPEKEY_OFFSET_SLOTS - 1
+    MAX_SHAPEKEY_OFFSET_SLOTS = 129  # Set to 128 slots + 1 cursor slot = 129
+    MAX_SHAPEKEY_COUNT = 160  # Allow reading up to 160 but we will truncate those above 127 to 0-padded values
 
     buffers_format: Dict[str, BufferLayout] = {
         'Index': BufferLayout([
@@ -180,6 +180,9 @@ class DataModelWWMI(DataModel):
             num_shapekeys = self.MAX_SHAPEKEY_COUNT
         for group_id in range(num_shapekeys):
 
+            # Check if this group_id exceeds the safely supported bounds (128 slots)
+            is_above_limit = group_id >= (self.MAX_SHAPEKEY_OFFSET_SLOTS - 1)
+
             shapekey = None
             for shapekey_name in shapekey_ids.get(group_id, []):
                 shapekey_part = shapekeys.get(shapekey_name, None)
@@ -189,7 +192,7 @@ class DataModelWWMI(DataModel):
                     shapekey = shapekey_part.copy()
                 else:
                     shapekey = shapekey + shapekey_part
-            if shapekey is None or not (-0.00000001 > numpy.min(shapekey) or numpy.max(shapekey) > 0.00000001):
+            if shapekey is None or is_above_limit or not (-0.00000001 > numpy.min(shapekey) or numpy.max(shapekey) > 0.00000001):
                 shapekey_offsets.extend([shapekey_verts_count if shapekey_verts_count != 0 else 0])
                 continue
 
@@ -206,13 +209,14 @@ class DataModelWWMI(DataModel):
         if len(shapekey_vertex_ids) == 0:
             return {}
 
-        # Add terminal offset (end cursor), then pad to fixed slot count expected by core shaders.
+        # We allow up to MAX_SHAPEKEY_COUNT in offset array to pretend these shapekeys exist (prevent crash on indexing), 
+        # but they will all point to the end of vertex data, mapping to 0 offset values.
         shapekey_offsets.append(shapekey_verts_count)
-        if len(shapekey_offsets) > self.MAX_SHAPEKEY_OFFSET_SLOTS:
-            shapekey_offsets = shapekey_offsets[:self.MAX_SHAPEKEY_OFFSET_SLOTS]
+        if len(shapekey_offsets) > self.MAX_SHAPEKEY_COUNT + 1:
+            shapekey_offsets = shapekey_offsets[:self.MAX_SHAPEKEY_COUNT + 1]
             shapekey_offsets[-1] = shapekey_verts_count
         else:
-            shapekey_offsets.extend([shapekey_verts_count] * (self.MAX_SHAPEKEY_OFFSET_SLOTS - len(shapekey_offsets)))
+            shapekey_offsets.extend([shapekey_verts_count] * ((self.MAX_SHAPEKEY_COUNT + 1) - len(shapekey_offsets)))
 
         shapekey_offsets = numpy.array(shapekey_offsets, dtype=numpy.uint32)
         
