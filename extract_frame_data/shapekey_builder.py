@@ -16,6 +16,8 @@ class ShapeKeys:
     shapekey_offsets: list = field(default_factory=lambda: [])
     # Sum of first 4 raw cb0 uint values (cb0[0].xyzw), used by ShapeKeyOverrider checksum
     cb0_checksum: int = 0
+    # Optional checksum for the second loader batch when game streams shapekeys in 2 passes.
+    cb0_secondary_checksum: int = 0
     # ShapeKey ID based indexed list of {VertexID: VertexOffsets}
     shapekeys_index: List[Dict[int, List[float]]] = field(default_factory=lambda: [])
     # Vertex ID based indexed dict of {ShapeKeyID: VertexOffsets}
@@ -112,13 +114,24 @@ class ShapeKeyBuilder:
                     for i in range(1, mono_count):
                         combined_offsets.append(base_offset + raw_offsets[i])
 
-            if len(batches) > 1:
-                print(f'ShapeKey multi-batch merge: {len(batches)} batches, {len(combined_offsets)} offsets, '
-                      f'{len(combined_offsets) - 1} shapekeys')
+            # Collect checksums from each batch cb0[0:4], preserving order and de-duplicating.
+            checksums = []
+            for _, _, cb0_values in batches:
+                checksum = sum(cb0_values[0:4])
+                if checksum not in checksums:
+                    checksums.append(checksum)
 
-            # Checksum from first batch's cb0[0:4]
+            if len(batches) > 1:
+                print(
+                    f'ShapeKey multi-batch merge: {len(batches)} batches, {len(combined_offsets)} offsets, '
+                    f'{len(combined_offsets) - 1} shapekeys, checksums={checksums}'
+                )
+
+            cb0_checksum = checksums[0] if checksums else 0
+            cb0_secondary_checksum = checksums[1] if len(checksums) > 1 else 0
+
+            # Use first batch's cb0 for main pipeline compatibility.
             first_cb0 = batches[0][2]
-            cb0_checksum = sum(first_cb0[0:4])
 
             # Use first batch's t0/t1 buffers (shared across batches, same resource hash)
             first_sd = batches[0][1]
@@ -174,6 +187,7 @@ class ShapeKeyBuilder:
                 dispatch_y=sum(sd.dispatch_y for _, sd, _ in batches),
                 shapekey_offsets=shapekey_offsets,
                 cb0_checksum=cb0_checksum,
+                cb0_secondary_checksum=cb0_secondary_checksum,
                 shapekeys_index=shapekeys_index,
                 indexed_shapekeys=indexed_shapekeys,
             )

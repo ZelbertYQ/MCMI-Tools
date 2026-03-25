@@ -209,6 +209,7 @@ class OutputBuilder:
                 vertex_count=shapekeys.shapekey_offsets[-1] - 1,
                 dispatch_y=shapekeys.dispatch_y,
                 checksum=shapekeys.cb0_checksum,
+                secondary_checksum=shapekeys.cb0_secondary_checksum,
             ) if shapekeys.shapekey_offsets else ExtractedObjectShapeKeys(),
 
             export_format=export_format,

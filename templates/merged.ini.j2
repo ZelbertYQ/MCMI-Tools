@@ -43,6 +43,13 @@ global $object_detected = 0
 global persist $mcmi_skip_second_shapekey_batch = 1
 {{note("Internal per-frame latch for ShapeKey Loader callback")}}
 global $mcmi_shapekey_loader_handled = 0
+{{note("Checksum for optional second ShapeKey batch (0 disables secondary matching)")}}
+global persist $mcmi_shapekey_secondary_checksum = {{ extracted_object.shapekeys.secondary_checksum|default(0, true) }}
+{{note("Optional world blink remap controls used by extended ShapeKeyOverrider")}}
+global persist $mcmi_enable_world_blink_remap = 0
+global persist $mcmi_world_blink_source_key = 156
+global persist $mcmi_world_blink_target_left = 46
+global persist $mcmi_world_blink_target_right = 47
 {{note("Used to pass current merge status to CommandListMergeSkeleton and get resulting merge status")}}
 global $merge_status_id = 0
 {{note("Stores skeleton merging status of this component for current frame:")}}
@@ -521,6 +528,13 @@ override_vertex_count = $mesh_vertex_count
 [CommandListSetupShapeKeys]
 {{note("Pass 4 byte checksum of shapekey offsets to ensure that we only modify expected values")}}
 $\WWMIv1\shapekey_checksum = {{ extracted_object.shapekeys.checksum }}
+{{note("Optional second checksum for games that stream shapekeys in multiple batches")}}
+$\WWMIv1\shapekey_secondary_checksum = $mcmi_shapekey_secondary_checksum
+{{note("Optional remap controls (no-op on legacy core builds)")}}
+$\WWMIv1\world_blink_remap_enable = $mcmi_enable_world_blink_remap
+$\WWMIv1\world_blink_source_key = $mcmi_world_blink_source_key
+$\WWMIv1\world_blink_target_left = $mcmi_world_blink_target_left
+$\WWMIv1\world_blink_target_right = $mcmi_world_blink_target_right
 {{note("Pass buffer with offsets for vertex lists of every shape key of custom model")}}
 cs-t33 = ResourceShapeKeyOffsetBuffer
 {{note("Pass buffer with custom values for every shape key, allows to control both custom and stock")}}
