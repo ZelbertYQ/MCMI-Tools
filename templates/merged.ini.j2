@@ -40,7 +40,7 @@ global $mod_enabled = 0
 {{note("Indicates if our object was detected in previous frame")}}
 global $object_detected = 0
 {{note("If set to 1, only the first ShapeKey Loader callback per frame will be processed; later callbacks are skipped")}}
-global persist $mcmi_skip_second_shapekey_batch = 1
+global persist $mcmi_skip_second_shapekey_batch = 0
 {{note("Internal per-frame latch for ShapeKey Loader callback")}}
 global $mcmi_shapekey_loader_handled = 0
 {{note("Checksum for optional second ShapeKey batch (0 disables secondary matching)")}}
@@ -48,6 +48,7 @@ global persist $mcmi_shapekey_secondary_checksum = {{ extracted_object.shapekeys
 {{note("Optional world blink remap controls used by extended ShapeKeyOverrider")}}
 global persist $mcmi_enable_world_blink_remap = 0
 global persist $mcmi_world_blink_source_key = 156
+global persist $mcmi_world_blink_source_base = 128
 global persist $mcmi_world_blink_target_left = 46
 global persist $mcmi_world_blink_target_right = 47
 {{note("Used to pass current merge status to CommandListMergeSkeleton and get resulting merge status")}}
@@ -526,13 +527,21 @@ override_vertex_count = $mesh_vertex_count
 
 {{note("Updates ResourceShapeKeyCBRW that stores offsets of shapekeyed vertex lists, shape key values and multipliers")}}
 [CommandListSetupShapeKeys]
+run = CommandListSetupShapeKeysPrimary
+if $mcmi_shapekey_secondary_checksum != 0
+    run = CommandListSetupShapeKeysSecondary
+endif
+
+{{note("Primary batch setup (legacy-safe)")}}
+[CommandListSetupShapeKeysPrimary]
 {{note("Pass 4 byte checksum of shapekey offsets to ensure that we only modify expected values")}}
 $\WWMIv1\shapekey_checksum = {{ extracted_object.shapekeys.checksum }}
 {{note("Optional second checksum for games that stream shapekeys in multiple batches")}}
-$\WWMIv1\shapekey_secondary_checksum = $mcmi_shapekey_secondary_checksum
+$\WWMIv1\shapekey_secondary_checksum = 0
 {{note("Optional remap controls (no-op on legacy core builds)")}}
 $\WWMIv1\world_blink_remap_enable = $mcmi_enable_world_blink_remap
 $\WWMIv1\world_blink_source_key = $mcmi_world_blink_source_key
+$\WWMIv1\world_blink_source_base = $mcmi_world_blink_source_base
 $\WWMIv1\world_blink_target_left = $mcmi_world_blink_target_left
 $\WWMIv1\world_blink_target_right = $mcmi_world_blink_target_right
 {{note("Pass buffer with offsets for vertex lists of every shape key of custom model")}}
@@ -541,7 +550,24 @@ cs-t33 = ResourceShapeKeyOffsetBuffer
 cs-u5 = ResourceCustomShapeKeyValuesRW
 {{note("Pass buffer that gonna store result of calculations, required for Shape Key Loader CS to run")}}
 cs-u6 = ResourceShapeKeyCBRW
+{{note("Pass persistent merged CB buffer to combine multi-batch shape key updates")}}
+cs-u7 = ResourceShapeKeyCBMergedRW
 {{note("Run ShapeKeyOverrider CS")}}
+run = CustomShader\WWMIv1\ShapeKeyOverrider
+
+{{note("Secondary batch setup. Uses second checksum as primary input for compatibility with legacy core.")}}
+[CommandListSetupShapeKeysSecondary]
+$\WWMIv1\shapekey_checksum = $mcmi_shapekey_secondary_checksum
+$\WWMIv1\shapekey_secondary_checksum = 0
+$\WWMIv1\world_blink_remap_enable = $mcmi_enable_world_blink_remap
+$\WWMIv1\world_blink_source_key = $mcmi_world_blink_source_key
+$\WWMIv1\world_blink_source_base = $mcmi_world_blink_source_base
+$\WWMIv1\world_blink_target_left = $mcmi_world_blink_target_left
+$\WWMIv1\world_blink_target_right = $mcmi_world_blink_target_right
+cs-t33 = ResourceShapeKeyOffsetBuffer
+cs-u5 = ResourceCustomShapeKeyValuesRW
+cs-u6 = ResourceShapeKeyCBRW
+cs-u7 = ResourceShapeKeyCBMergedRW
 run = CustomShader\WWMIv1\ShapeKeyOverrider
 
 {{note("Runs custom Shape Key Loader CS to, well, load shapekeys data from buffers")}}
@@ -631,6 +657,12 @@ array = {{12 * merged_object.shapekeys.vertex_count}}
 type = RWBuffer
 format = R32G32B32A32_UINT
 {{note("64 shapekey offsets, 64 shapekey values, 2 control flags")}}
+array = 130
+
+{{note("Stores persistent merged CB to combine primary and secondary shape key batches")}}
+[ResourceShapeKeyCBMergedRW]
+type = RWBuffer
+format = R32G32B32A32_UINT
 array = 130
 
 {{note("Stores values of custom Shape Keys and overrides for original ones")}}

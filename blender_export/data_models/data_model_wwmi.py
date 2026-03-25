@@ -14,10 +14,9 @@ from ...migoto_io.data_model.data_model import DataModel
 
 
 class DataModelWWMI(DataModel):
-    # Keep slot 127 as overflow guard. Some runtime paths clamp >127 calls to 127,
-    # so exporting real data in 127 can still cause visible corruption.
-    MAX_SHAPEKEY_OFFSET_SLOTS = 128  # 127 data slots (0-126) + 1 cursor slot
-    MAX_SHAPEKEY_COUNT = 160  # Keep exported offset table compatible with runtime requests up to 160
+    # Export full currently observed range for new characters: IDs 0..160.
+    # Offset buffer stores one extra terminal cursor, so length is MAX_SHAPEKEY_COUNT + 1.
+    MAX_SHAPEKEY_COUNT = 161
 
     buffers_format: Dict[str, BufferLayout] = {
         'Index': BufferLayout([
@@ -181,11 +180,6 @@ class DataModelWWMI(DataModel):
             )
             num_shapekeys = self.MAX_SHAPEKEY_COUNT
         for group_id in range(num_shapekeys):
-
-            # Check if this group_id exceeds the safely supported bounds.
-            # group_id >= 127 is treated as overflow and points to zero-delta guard.
-            is_above_limit = group_id >= (self.MAX_SHAPEKEY_OFFSET_SLOTS - 1)
-
             shapekey = None
             for shapekey_name in shapekey_ids.get(group_id, []):
                 shapekey_part = shapekeys.get(shapekey_name, None)
@@ -195,7 +189,7 @@ class DataModelWWMI(DataModel):
                     shapekey = shapekey_part.copy()
                 else:
                     shapekey = shapekey + shapekey_part
-            if shapekey is None or is_above_limit or not (-0.00000001 > numpy.min(shapekey) or numpy.max(shapekey) > 0.00000001):
+            if shapekey is None or not (-0.00000001 > numpy.min(shapekey) or numpy.max(shapekey) > 0.00000001):
                 shapekey_offsets.extend([shapekey_verts_count if shapekey_verts_count != 0 else 0])
                 continue
 
