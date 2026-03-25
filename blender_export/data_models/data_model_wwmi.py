@@ -17,6 +17,7 @@ class DataModelWWMI(DataModel):
     # Export full currently observed range for new characters: IDs 0..160.
     # Offset buffer stores one extra terminal cursor, so length is MAX_SHAPEKEY_COUNT + 1.
     MAX_SHAPEKEY_COUNT = 161
+    SHAPEKEY_PAGE_SIZE = 128
 
     buffers_format: Dict[str, BufferLayout] = {
         'Index': BufferLayout([
@@ -45,6 +46,9 @@ class DataModelWWMI(DataModel):
         ]),
         'ShapeKeyOffset': BufferLayout([
             BufferSemantic(AbstractSemantic(Semantic.ShapeKey, 0), DXGIFormat.R32G32B32A32_UINT),
+        ]),
+        'ShapeKeyOffset2': BufferLayout([
+            BufferSemantic(AbstractSemantic(Semantic.ShapeKey, 3), DXGIFormat.R32G32B32A32_UINT),
         ]),
         'ShapeKeyVertexId': BufferLayout([
             BufferSemantic(AbstractSemantic(Semantic.ShapeKey, 1), DXGIFormat.R32_UINT),
@@ -216,6 +220,20 @@ class DataModelWWMI(DataModel):
             shapekey_offsets.extend([shapekey_verts_count] * ((self.MAX_SHAPEKEY_COUNT + 1) - len(shapekey_offsets)))
 
         shapekey_offsets = numpy.array(shapekey_offsets, dtype=numpy.uint32)
+
+        # Build paged shape key offsets for runtime that processes keys in 128-sized pages.
+        # Page0: global 0..127, Page1: global 128..255.
+        def build_offset_page(global_offsets: numpy.ndarray, page_start: int) -> numpy.ndarray:
+            tail = int(global_offsets[-1])
+            page = numpy.full(self.SHAPEKEY_PAGE_SIZE, tail, dtype=numpy.uint32)
+            for local_id in range(self.SHAPEKEY_PAGE_SIZE):
+                global_id = page_start + local_id
+                if global_id < len(global_offsets):
+                    page[local_id] = global_offsets[global_id]
+            return page
+
+        shapekey_offsets_page0 = build_offset_page(shapekey_offsets, 0)
+        shapekey_offsets_page1 = build_offset_page(shapekey_offsets, self.SHAPEKEY_PAGE_SIZE)
         
         shapekey_vertex_offsets_np = numpy.zeros(len(shapekey_vertex_offsets), dtype=(numpy.float16, 6))
         # shapekey_vertex_offsets = numpy.zeros(len(shapekey_vertex_offsets), dtype=numpy.float16)
@@ -226,7 +244,8 @@ class DataModelWWMI(DataModel):
 
         shapekey_vertex_ids = numpy.array(shapekey_vertex_ids, dtype=numpy.uint32)
 
-        buffers['ShapeKeyOffset'].set_data(shapekey_offsets)
+        buffers['ShapeKeyOffset'].set_data(shapekey_offsets_page0)
+        buffers['ShapeKeyOffset2'].set_data(shapekey_offsets_page1)
         buffers['ShapeKeyVertexId'].set_data(shapekey_vertex_ids)
         buffers['ShapeKeyVertexOffset'].set_data(shapekey_vertex_offsets_np)
 
