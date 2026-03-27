@@ -176,11 +176,20 @@ class OutputBuilder:
             'ShapeKeyOffset': ExtractedObjectBuffer([
                 ExtractedObjectBufferSemantic(Semantic.ShapeKey, 0, DXGIFormat.R32G32B32A32_UINT)
             ]),
+            'ShapeKeyOffset2': ExtractedObjectBuffer([
+                ExtractedObjectBufferSemantic(Semantic.ShapeKey, 3, DXGIFormat.R32G32B32A32_UINT)
+            ]),
             'ShapeKeyVertexId': ExtractedObjectBuffer([
                 ExtractedObjectBufferSemantic(Semantic.ShapeKey, 1, DXGIFormat.R32_UINT)
             ]),
+            'ShapeKeyVertexId2': ExtractedObjectBuffer([
+                ExtractedObjectBufferSemantic(Semantic.ShapeKey, 4, DXGIFormat.R32_UINT)
+            ]),
             'ShapeKeyVertexOffset': ExtractedObjectBuffer([
                 ExtractedObjectBufferSemantic(Semantic.ShapeKey, 2, DXGIFormat.R16_FLOAT)
+            ]),
+            'ShapeKeyVertexOffset2': ExtractedObjectBuffer([
+                ExtractedObjectBufferSemantic(Semantic.ShapeKey, 5, DXGIFormat.R16_FLOAT)
             ]),
         })
 

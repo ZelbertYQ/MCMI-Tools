@@ -163,7 +163,10 @@ class ModExporter:
             index_layout)
 
         self.merged_object.vertex_count = vertex_count
-        self.merged_object.shapekeys.vertex_count = len(self.buffers.get('ShapeKeyVertexId', []))
+        self.merged_object.shapekeys.vertex_count = (
+            len(self.buffers.get('ShapeKeyVertexId', []))
+            + len(self.buffers.get('ShapeKeyVertexId2', []))
+        )
         shapekey_offsets = self.buffers.get('ShapeKeyOffset', None)
         if shapekey_offsets is not None and len(shapekey_offsets) > 0:
             self.merged_object.shapekeys.shapekey_count = max(0, len(shapekey_offsets) - 1)

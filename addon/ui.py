@@ -1094,8 +1094,11 @@ class MCMI_Export(bpy.types.Operator):
                 exclude_buffers.append('TexCoord')
             if not cfg.export_shapekeys:
                 exclude_buffers.append('ShapeKeyOffset')
+                exclude_buffers.append('ShapeKeyOffset2')
                 exclude_buffers.append('ShapeKeyVertexId')
+                exclude_buffers.append('ShapeKeyVertexId2')
                 exclude_buffers.append('ShapeKeyVertexOffset')
+                exclude_buffers.append('ShapeKeyVertexOffset2')
                 
             return exclude_buffers
     
