@@ -43,12 +43,6 @@ global persist $mcmi_skip_second_shapekey_batch = 0
 global $mcmi_shapekey_loader_handled = 0
 {{note("Checksum for optional second ShapeKey batch (0 disables secondary matching)")}}
 global persist $mcmi_shapekey_secondary_checksum = {{ extracted_object.shapekeys.secondary_checksum|default(0, true) }}
-{{note("Optional world blink remap controls used by extended ShapeKeyOverrider")}}
-global persist $mcmi_enable_world_blink_remap = 0
-global persist $mcmi_world_blink_source_key = 0
-global persist $mcmi_world_blink_source_base = 128
-global persist $mcmi_world_blink_target_left = 46
-global persist $mcmi_world_blink_target_right = 47
 {%- if cfg.use_ini_toggles %}
 ; Swap vars aka toggles defaults
 {%- for var in cfg.ini_toggles.vars %}
@@ -289,12 +283,6 @@ run = CommandListSetupShapeKeysPrimary
 $\WWMIv1\shapekey_checksum = {{ extracted_object.shapekeys.checksum }}
 {{note("Optional second checksum for games that stream shapekeys in multiple batches")}}
 $\WWMIv1\shapekey_secondary_checksum = $mcmi_shapekey_secondary_checksum
-{{note("Optional remap controls (no-op on legacy core builds)")}}
-$\WWMIv1\world_blink_remap_enable = $mcmi_enable_world_blink_remap
-$\WWMIv1\world_blink_source_key = $mcmi_world_blink_source_key
-$\WWMIv1\world_blink_source_base = $mcmi_world_blink_source_base
-$\WWMIv1\world_blink_target_left = $mcmi_world_blink_target_left
-$\WWMIv1\world_blink_target_right = $mcmi_world_blink_target_right
 {{note("Pass buffer with offsets for vertex lists of every shape key of custom model")}}
 cs-t33 = ResourceShapeKeyOffsetBuffer
 {{note("Pass page-2 offsets for secondary shape key batch")}}
@@ -303,44 +291,25 @@ cs-t34 = ResourceShapeKeyOffset2Buffer
 cs-u5 = ResourceCustomShapeKeyValuesRW
 {{note("Pass buffer that gonna store result of calculations, required for Shape Key Loader CS to run")}}
 cs-u6 = ResourceShapeKeyCBRW
-{{note("Pass persistent merged CB buffer to combine multi-batch shape key updates")}}
-cs-u7 = ResourceShapeKeyCBMergedRW
 {{note("Run ShapeKeyOverrider CS")}}
 run = CustomShader\WWMIv1\ShapeKeyOverrider
 
-{{note("Runs custom Shape Key Loader CS for primary batch")}}
-[CommandListLoadShapeKeysPrimary]
-{{note("Pass number of shapekeyed vertices to adjust required threads count via dipatch_y")}}
-$\WWMIv1\shapekey_vertex_count = $shapekey_vertex_count
-{{note("Pass buffer with lists of per-vertex ids for every shape key")}}
-cs-t0 = ResourceShapeKeyVertexIdBuffer
-{{note("Pass buffer with lists of xyz per-vertex offsets for every shape key")}}
-cs-t1 = ResourceShapeKeyVertexOffsetBuffer
-{{note("Pass buffer with shape key vertex lists offsets, and shape key values & multipliers")}}
-cs-u6 = ResourceShapeKeyCBRW
-{{note("Run ShapeKeyLoader CS")}}
-run = CustomShader\WWMIv1\ShapeKeyLoader
-
-{{note("Runs custom Shape Key Loader CS for secondary batch")}}
-[CommandListLoadShapeKeysSecondary]
-{{note("Pass number of shapekeyed vertices to adjust required threads count via dipatch_y")}}
-$\WWMIv1\shapekey_vertex_count = $shapekey_vertex_count
-{{note("Pass page-2 buffer with lists of per-vertex ids for every shape key")}}
-cs-t0 = ResourceShapeKeyVertexId2Buffer
-{{note("Pass page-2 buffer with lists of xyz per-vertex offsets for every shape key")}}
-cs-t1 = ResourceShapeKeyVertexOffset2Buffer
-{{note("Pass buffer with shape key vertex lists offsets, and shape key values & multipliers")}}
-cs-u6 = ResourceShapeKeyCBRW
-{{note("Run ShapeKeyLoader CS")}}
-run = CustomShader\WWMIv1\ShapeKeyLoader
-
-{{note("Dispatches Shape Key Loader against primary/secondary vertex data pages")}}
+{{note("Runs custom Shape Key Loader CS with both vertex-data pages bound")}}
 [CommandListLoadShapeKeys]
-if $mcmi_shapekey_loader_handled == 0
-    run = CommandListLoadShapeKeysPrimary
-else
-    run = CommandListLoadShapeKeysSecondary
-endif
+{{note("Pass number of shapekeyed vertices to adjust required threads count via dipatch_y")}}
+$\WWMIv1\shapekey_vertex_count = $shapekey_vertex_count
+{{note("Pass page-1 buffer with lists of per-vertex ids for every shape key")}}
+cs-t0 = ResourceShapeKeyVertexIdBuffer
+{{note("Pass page-1 buffer with lists of xyz per-vertex offsets for every shape key")}}
+cs-t1 = ResourceShapeKeyVertexOffsetBuffer
+{{note("Pass page-2 buffer with lists of per-vertex ids for every shape key")}}
+cs-t2 = ResourceShapeKeyVertexId2Buffer
+{{note("Pass page-2 buffer with lists of xyz per-vertex offsets for every shape key")}}
+cs-t3 = ResourceShapeKeyVertexOffset2Buffer
+{{note("Pass buffer with shape key vertex lists offsets, and shape key values & multipliers")}}
+cs-u6 = ResourceShapeKeyCBRW
+{{note("Run ShapeKeyLoader CS (shader decides page by current batch marker)")}}
+run = CustomShader\WWMIv1\ShapeKeyLoader
 
 {{note("Handles WWMI callback fired on original Shape Key Loader CS call")}}
 [TextureOverrideShapeKeyLoaderCallback]
@@ -416,12 +385,6 @@ array = {{12 * merged_object.shapekeys.vertex_count}}
 type = RWBuffer
 format = R32G32B32A32_UINT
 {{note("64 shapekey offsets, 64 shapekey values, 2 control flags")}}
-array = 130
-
-{{note("Stores persistent merged CB to combine primary and secondary shape key batches")}}
-[ResourceShapeKeyCBMergedRW]
-type = RWBuffer
-format = R32G32B32A32_UINT
 array = 130
 
 {{note("Stores values of custom Shape Keys and overrides for original ones")}}
