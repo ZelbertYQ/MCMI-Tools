@@ -84,6 +84,44 @@ class ObjectMerger:
     # Output
     merged_object: MergedObject = field(init=False)
 
+    @staticmethod
+    def _rename_layer_collection_sequential(layer_collection, name_builder, temp_prefix):
+        if layer_collection is None or len(layer_collection) == 0:
+            return
+
+        # Two-pass rename to avoid collisions (Blender may append .001 otherwise).
+        for layer_index, layer in enumerate(layer_collection):
+            layer.name = f'{temp_prefix}_{layer_index}'
+
+        for layer_index, layer in enumerate(layer_collection):
+            layer.name = name_builder(layer_index)
+
+    @classmethod
+    def rename_temp_attribute_layers_by_slot(cls, temp_obj: bpy.types.Object):
+        mesh = getattr(temp_obj, 'data', None)
+        if mesh is None:
+            return
+
+        if hasattr(mesh, 'uv_layers'):
+            cls._rename_layer_collection_sequential(
+                mesh.uv_layers,
+                lambda uv_index: f'TEXCOORD{uv_index if uv_index > 0 else ""}.xy',
+                '__MCMI_TMP_UV'
+            )
+
+        if hasattr(mesh, 'color_attributes') and mesh.color_attributes is not None and len(mesh.color_attributes) > 0:
+            cls._rename_layer_collection_sequential(
+                mesh.color_attributes,
+                lambda color_index: f'COLOR{color_index if color_index > 0 else ""}',
+                '__MCMI_TMP_COLOR'
+            )
+        elif hasattr(mesh, 'vertex_colors') and mesh.vertex_colors is not None:
+            cls._rename_layer_collection_sequential(
+                mesh.vertex_colors,
+                lambda color_index: f'COLOR{color_index if color_index > 0 else ""}',
+                '__MCMI_TMP_COLOR'
+            )
+
     def __post_init__(self):
         collection_was_hidden = collection_is_hidden(self.collection)
         unhide_collection(self.collection)
@@ -175,6 +213,9 @@ class ObjectMerger:
                         apply_modifiers_for_object_with_shape_keys(self.context, selected_modifiers, None)
                     # Triangulate (this step is crucial since export supports only triangles)
                     triangulate_object(self.context, temp_obj)
+                # Normalize UV/Color layer names by slot order on temp objects only.
+                # This keeps export deterministic even if source layer names are arbitrary.
+                self.rename_temp_attribute_layers_by_slot(temp_obj)
                 # Handle Vertex Groups
                 vertex_groups = get_vertex_groups(temp_obj)
                 # Fill gaps in Vertex Groups list based on VG names (i.e. add group '1' between '0' and '2' if it's missing)

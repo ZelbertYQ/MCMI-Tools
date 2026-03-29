@@ -130,7 +130,6 @@ class DataModelWWMI(DataModel):
                 buffers_format = dict(buffers_format)
                 buffers_format['TexCoord'] = BufferLayout([
                     BufferSemantic(AbstractSemantic(Semantic.TexCoord, 0), DXGIFormat.R16G16_FLOAT),
-                    BufferSemantic(AbstractSemantic(Semantic.TexCoord, 1), DXGIFormat.R16G16_FLOAT),
                     BufferSemantic(AbstractSemantic(Semantic.TexCoord, 2), DXGIFormat.R16G16_FLOAT),
                     BufferSemantic(AbstractSemantic(Semantic.TexCoord, 3), DXGIFormat.R16G16_FLOAT),
                 ])
