@@ -114,30 +114,58 @@ class ObjectImporter:
             file_by_hash[texture_hash_l] = texture_info.get('file', '')
 
         assignments = {}
-        assigned_hashes = set()
-        changed = True
-        while changed:
-            changed = False
+
+        def prune_remaining():
+            changed_local = False
             for texture_hash in list(remaining.keys()):
-                if texture_hash in assigned_hashes:
-                    del remaining[texture_hash]
-                    changed = True
-                    continue
-                reduced_components = set([component_id for component_id in remaining[texture_hash] if component_id not in assignments])
+                reduced_components = set([
+                    component_id
+                    for component_id in remaining[texture_hash]
+                    if component_id not in assignments
+                ])
                 if reduced_components != remaining[texture_hash]:
                     remaining[texture_hash] = reduced_components
-                    changed = True
+                    changed_local = True
                 if len(reduced_components) == 0:
                     del remaining[texture_hash]
-                    changed = True
+                    changed_local = True
+            return changed_local
+
+        changed = True
+        while changed:
+            changed = prune_remaining()
+
+            # High confidence: one texture is only used by one component.
+            for texture_hash in list(remaining.keys()):
+                component_ids = remaining.get(texture_hash, set())
+                if len(component_ids) != 1:
                     continue
-                if len(reduced_components) == 1:
-                    component_id = next(iter(reduced_components))
-                    if component_id not in assignments:
-                        assignments[component_id] = texture_hash
-                        assigned_hashes.add(texture_hash)
-                        del remaining[texture_hash]
-                        changed = True
+                component_id = next(iter(component_ids))
+                if component_id in assignments:
+                    continue
+                assignments[component_id] = texture_hash
+                changed = True
+
+            if prune_remaining():
+                changed = True
+
+            # Fallback: when one component only has one remaining texture,
+            # assign it and keep filtering remaining candidates iteratively.
+            component_candidates = {}
+            for texture_hash, component_ids in remaining.items():
+                for component_id in component_ids:
+                    if component_id in assignments:
+                        continue
+                    component_candidates.setdefault(component_id, set()).add(texture_hash)
+
+            for component_id, candidate_hashes in component_candidates.items():
+                if len(candidate_hashes) != 1:
+                    continue
+                texture_hash = next(iter(candidate_hashes))
+                if component_id in assignments:
+                    continue
+                assignments[component_id] = texture_hash
+                changed = True
 
         conflicts = {}
         for component_id in all_components:
@@ -205,6 +233,17 @@ class ObjectImporter:
                 links.new(image_texture.outputs['Color'], principled.inputs['Base Color'])
         else:
             conflict_hashes = conflicts.get(component_id, [])
+            if len(conflict_hashes) == 1:
+                texture_hash = conflict_hashes[0]
+                texture_file = file_by_hash.get(texture_hash, '')
+                texture_path = object_source_folder / texture_file if texture_file else self.resolve_texture_path(object_source_folder, texture_hash)
+                if texture_path is not None and Path(texture_path).is_file():
+                    image = bpy.data.images.load(str(texture_path), check_existing=True)
+                    image.alpha_mode = 'CHANNEL_PACKED'
+                    image_texture = self.create_image_node(nodes, image, x_base, y_base, 'Diffuse Texture (Fallback)')
+                    links.new(image_texture.outputs['Color'], principled.inputs['Base Color'])
+                    conflict_hashes = []
+
             x_conflict = x_base - 350
             for index, texture_hash in enumerate(conflict_hashes):
                 texture_file = file_by_hash.get(texture_hash, '')

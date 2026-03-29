@@ -56,8 +56,11 @@ class ExtractedObjectShapeKeys:
     scale_hash: str = ''
     vertex_count: int = 0
     dispatch_y: int = 0
+    dispatch_y_batch0: int = 0
+    dispatch_y_batch1: int = 0
     checksum: int = 0
     secondary_checksum: int = 0
+    secondary_vertex_offset: int = 0
 
 
 class EnumEncoder(json.JSONEncoder):

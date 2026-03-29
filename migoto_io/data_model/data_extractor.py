@@ -25,6 +25,22 @@ class BlenderDataExtractor:
     format_converters: Dict[AbstractSemantic, List[callable]] = {}
     semantic_converters: Dict[AbstractSemantic, List[callable]] = {}
 
+    def _get_color_attribute_by_index(self, mesh: bpy.types.Mesh, color_index: int):
+        # Prefer modern color attributes and map COLOR/COLOR1 by slot order.
+        if hasattr(mesh, 'color_attributes') and mesh.color_attributes is not None:
+            if color_index < len(mesh.color_attributes):
+                return mesh.color_attributes[color_index]
+        # Fallback for legacy projects that still keep vertex_colors data.
+        if hasattr(mesh, 'vertex_colors') and mesh.vertex_colors is not None:
+            if color_index < len(mesh.vertex_colors):
+                return mesh.vertex_colors[color_index]
+        return None
+
+    def _get_uv_layer_by_index(self, mesh: bpy.types.Mesh, uv_index: int):
+        if uv_index < len(mesh.uv_layers):
+            return mesh.uv_layers[uv_index]
+        return None
+
     def get_data(self, 
                  mesh: bpy.types.Mesh, 
                  layout: BufferLayout, 
@@ -180,14 +196,27 @@ class BlenderDataExtractor:
             elif semantic == Semantic.BitangentSign:
                 data = self.fetch_data(mesh.loops, 'bitangent_sign', numpy_type, size)
             elif semantic == Semantic.Color:
-                if hasattr(mesh, 'vertex_colors') and semantic_name in mesh.vertex_colors:
-                    # Legacy projects support (for object imported with MCMI Tools 1.3.5 or below)
-                    color_attribute = mesh.vertex_colors[semantic_name]
-                else:
-                    color_attribute = mesh.color_attributes[semantic_name]
+                color_index = buffer_semantic.abstract.index
+                color_attribute = self._get_color_attribute_by_index(mesh, color_index)
+                if color_attribute is None:
+                    # Backward compatibility fallback for unusual layer ordering/projects.
+                    if hasattr(mesh, 'vertex_colors') and semantic_name in mesh.vertex_colors:
+                        color_attribute = mesh.vertex_colors[semantic_name]
+                    elif hasattr(mesh, 'color_attributes') and semantic_name in mesh.color_attributes:
+                        color_attribute = mesh.color_attributes[semantic_name]
+                    else:
+                        raise ValueError(f'Missing color layer for semantic {semantic_name} (slot {color_index})')
                 data = self.fetch_data(color_attribute.data, 'color', numpy_type, size)
             elif semantic == Semantic.TexCoord:
-                data = self.fetch_data(mesh.uv_layers[semantic_name].data, 'uv', numpy_type, size)
+                uv_index = buffer_semantic.abstract.index
+                uv_layer = self._get_uv_layer_by_index(mesh, uv_index)
+                if uv_layer is None:
+                    # Backward compatibility fallback for unusual naming-only setups.
+                    if semantic_name in mesh.uv_layers:
+                        uv_layer = mesh.uv_layers[semantic_name]
+                    else:
+                        raise ValueError(f'Missing UV layer for semantic {semantic_name} (slot {uv_index})')
+                data = self.fetch_data(uv_layer.data, 'uv', numpy_type, size)
             else:
                 continue
             self.sanitize_blender_data(data)

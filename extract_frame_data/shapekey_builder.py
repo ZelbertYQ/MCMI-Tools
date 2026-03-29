@@ -13,11 +13,16 @@ class ShapeKeys:
     offsets_hash: str
     scale_hash: str = ''
     dispatch_y: int = 0
+    dispatch_y_batch0: int = 0
+    dispatch_y_batch1: int = 0
     shapekey_offsets: list = field(default_factory=lambda: [])
     # Sum of first 4 raw cb0 uint values (cb0[0].xyzw), used by ShapeKeyOverrider checksum
     cb0_checksum: int = 0
     # Optional checksum for the second loader batch when game streams shapekeys in 2 passes.
     cb0_secondary_checksum: int = 0
+    # Raw cb0[65].y value of the second batch in original pipeline.
+    # New CORE uses this value to remap batch-local vertex offsets.
+    cb0_secondary_vertex_offset: int = 0
     # ShapeKey ID based indexed list of {VertexID: VertexOffsets}
     shapekeys_index: List[Dict[int, List[float]]] = field(default_factory=lambda: [])
     # Vertex ID based indexed dict of {ShapeKeyID: VertexOffsets}
@@ -129,6 +134,9 @@ class ShapeKeyBuilder:
 
             cb0_checksum = checksums[0] if checksums else 0
             cb0_secondary_checksum = checksums[1] if len(checksums) > 1 else 0
+            cb0_secondary_vertex_offset = batches[1][0] if len(batches) > 1 else 0
+            dispatch_y_batch0 = batches[0][1].dispatch_y if batches else 0
+            dispatch_y_batch1 = batches[1][1].dispatch_y if len(batches) > 1 else 0
 
             # Use first batch's cb0 for main pipeline compatibility.
             first_cb0 = batches[0][2]
@@ -185,9 +193,12 @@ class ShapeKeyBuilder:
                 offsets_hash=first_sd.shapekey_hash,
                 scale_hash=first_sd.shapekey_scale_hash,
                 dispatch_y=sum(sd.dispatch_y for _, sd, _ in batches),
+                dispatch_y_batch0=dispatch_y_batch0,
+                dispatch_y_batch1=dispatch_y_batch1,
                 shapekey_offsets=shapekey_offsets,
                 cb0_checksum=cb0_checksum,
                 cb0_secondary_checksum=cb0_secondary_checksum,
+                cb0_secondary_vertex_offset=cb0_secondary_vertex_offset,
                 shapekeys_index=shapekeys_index,
                 indexed_shapekeys=indexed_shapekeys,
             )

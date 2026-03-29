@@ -21,6 +21,7 @@ class DataModelWWMI(DataModel):
     # WuWa's second shapekey batch appears to be aligned with a seam slot at the page boundary.
     # Use 127 as page-2 start so runtime ids >=128 map to expected offsets.
     SHAPEKEY_PAGE2_START = 127
+    MAX_TEXCOORD_SLOTS = 5
 
     buffers_format: Dict[str, BufferLayout] = {
         'Index': BufferLayout([
@@ -53,17 +54,26 @@ class DataModelWWMI(DataModel):
         'ShapeKeyOffset2': BufferLayout([
             BufferSemantic(AbstractSemantic(Semantic.ShapeKey, 3), DXGIFormat.R32G32B32A32_UINT),
         ]),
+        'ShapeKeyOffsetMerged': BufferLayout([
+            BufferSemantic(AbstractSemantic(Semantic.ShapeKey, 6), DXGIFormat.R32G32B32A32_UINT),
+        ]),
         'ShapeKeyVertexId': BufferLayout([
             BufferSemantic(AbstractSemantic(Semantic.ShapeKey, 1), DXGIFormat.R32_UINT),
         ]),
         'ShapeKeyVertexId2': BufferLayout([
             BufferSemantic(AbstractSemantic(Semantic.ShapeKey, 4), DXGIFormat.R32_UINT),
         ]),
+        'ShapeKeyVertexIdMerged': BufferLayout([
+            BufferSemantic(AbstractSemantic(Semantic.ShapeKey, 7), DXGIFormat.R32_UINT),
+        ]),
         'ShapeKeyVertexOffset': BufferLayout([
             BufferSemantic(AbstractSemantic(Semantic.ShapeKey, 2), DXGIFormat.R16_FLOAT),
         ]),
         'ShapeKeyVertexOffset2': BufferLayout([
             BufferSemantic(AbstractSemantic(Semantic.ShapeKey, 5), DXGIFormat.R16_FLOAT),
+        ]),
+        'ShapeKeyVertexOffsetMerged': BufferLayout([
+            BufferSemantic(AbstractSemantic(Semantic.ShapeKey, 8), DXGIFormat.R16_FLOAT),
         ]),
     }
 
@@ -94,6 +104,24 @@ class DataModelWWMI(DataModel):
 
         if buffers_format is None:
             buffers_format = self.buffers_format
+
+        # Export UVs by slot order (UV0..UV4 -> TEXCOORD0..TEXCOORD4),
+        # not by layer names. Keep metadata format as minimum and extend
+        # up to the actual mesh UV count (capped for current pipeline).
+        if 'TexCoord' in buffers_format:
+            buffers_format = dict(buffers_format)
+            texcoord_layout = buffers_format['TexCoord']
+            existing_texcoord_count = len([
+                semantic for semantic in texcoord_layout.semantics
+                if semantic.abstract.enum == Semantic.TexCoord
+            ])
+            mesh_uv_count = len(getattr(mesh, 'uv_layers', []))
+            target_texcoord_count = min(max(existing_texcoord_count, mesh_uv_count), self.MAX_TEXCOORD_SLOTS)
+            if target_texcoord_count != existing_texcoord_count:
+                buffers_format['TexCoord'] = BufferLayout([
+                    BufferSemantic(AbstractSemantic(Semantic.TexCoord, uv_index), DXGIFormat.R16G16_FLOAT)
+                    for uv_index in range(target_texcoord_count)
+                ])
 
         # Migrate old 3UV+2COLOR Metadata.json export format to 4UV+1COLOR
         if 'TexCoord' in buffers_format:
@@ -274,12 +302,19 @@ class DataModelWWMI(DataModel):
         # Page1 maps local 0..127 to global 127..254.
         page1_offsets, page1_ids, page1_offsets_xyz = build_page_data(self.SHAPEKEY_PAGE2_START)
 
+        merged_offsets = numpy.concatenate((page0_offsets, page1_offsets), axis=0)
+        merged_ids = numpy.concatenate((page0_ids, page1_ids), axis=0)
+        merged_offsets_xyz = numpy.concatenate((page0_offsets_xyz, page1_offsets_xyz), axis=0)
+
         buffers['ShapeKeyOffset'].set_data(page0_offsets)
         buffers['ShapeKeyOffset2'].set_data(page1_offsets)
+        buffers['ShapeKeyOffsetMerged'].set_data(merged_offsets)
         buffers['ShapeKeyVertexId'].set_data(page0_ids)
         buffers['ShapeKeyVertexOffset'].set_data(page0_offsets_xyz)
         buffers['ShapeKeyVertexId2'].set_data(page1_ids)
         buffers['ShapeKeyVertexOffset2'].set_data(page1_offsets_xyz)
+        buffers['ShapeKeyVertexIdMerged'].set_data(merged_ids)
+        buffers['ShapeKeyVertexOffsetMerged'].set_data(merged_offsets_xyz)
 
         total_shapekeyed_vertices = len(page0_ids) + len(page1_ids)
         print(f'Shape Keys formatting time: {time.time() - start_time :.3f}s ({total_shapekeyed_vertices} shapekeyed vertices)')

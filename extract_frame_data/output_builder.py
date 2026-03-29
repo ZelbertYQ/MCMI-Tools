@@ -152,16 +152,23 @@ class OutputBuilder:
             ]),
         }
 
-        if vertex_buffer_layout.get_element(AbstractSemantic(Semantic.TexCoord, 3)):
+        max_texcoord_index = -1
+        for semantic in vertex_buffer_layout.semantics:
+            if semantic.abstract.enum != Semantic.TexCoord:
+                continue
+            if semantic.abstract.index > max_texcoord_index:
+                max_texcoord_index = semantic.abstract.index
+        # Current export pipeline supports TEXCOORD0..4.
+        max_texcoord_index = min(max_texcoord_index, 4)
+
+        if max_texcoord_index >= 3:
             export_format.update({
                 'Color': ExtractedObjectBuffer([
                     ExtractedObjectBufferSemantic(Semantic.Color, 0, DXGIFormat.R8G8B8A8_UNORM)
                 ]),
                 'TexCoord': ExtractedObjectBuffer([
-                    ExtractedObjectBufferSemantic(Semantic.TexCoord, 0, DXGIFormat.R16G16_FLOAT),
-                    ExtractedObjectBufferSemantic(Semantic.TexCoord, 1, DXGIFormat.R16G16_FLOAT),
-                    ExtractedObjectBufferSemantic(Semantic.TexCoord, 2, DXGIFormat.R16G16_FLOAT),
-                    ExtractedObjectBufferSemantic(Semantic.TexCoord, 3, DXGIFormat.R16G16_FLOAT),
+                    ExtractedObjectBufferSemantic(Semantic.TexCoord, texcoord_index, DXGIFormat.R16G16_FLOAT)
+                    for texcoord_index in range(max_texcoord_index + 1)
                 ])
             })
         else:
@@ -179,17 +186,26 @@ class OutputBuilder:
             'ShapeKeyOffset2': ExtractedObjectBuffer([
                 ExtractedObjectBufferSemantic(Semantic.ShapeKey, 3, DXGIFormat.R32G32B32A32_UINT)
             ]),
+            'ShapeKeyOffsetMerged': ExtractedObjectBuffer([
+                ExtractedObjectBufferSemantic(Semantic.ShapeKey, 6, DXGIFormat.R32G32B32A32_UINT)
+            ]),
             'ShapeKeyVertexId': ExtractedObjectBuffer([
                 ExtractedObjectBufferSemantic(Semantic.ShapeKey, 1, DXGIFormat.R32_UINT)
             ]),
             'ShapeKeyVertexId2': ExtractedObjectBuffer([
                 ExtractedObjectBufferSemantic(Semantic.ShapeKey, 4, DXGIFormat.R32_UINT)
             ]),
+            'ShapeKeyVertexIdMerged': ExtractedObjectBuffer([
+                ExtractedObjectBufferSemantic(Semantic.ShapeKey, 7, DXGIFormat.R32_UINT)
+            ]),
             'ShapeKeyVertexOffset': ExtractedObjectBuffer([
                 ExtractedObjectBufferSemantic(Semantic.ShapeKey, 2, DXGIFormat.R16_FLOAT)
             ]),
             'ShapeKeyVertexOffset2': ExtractedObjectBuffer([
                 ExtractedObjectBufferSemantic(Semantic.ShapeKey, 5, DXGIFormat.R16_FLOAT)
+            ]),
+            'ShapeKeyVertexOffsetMerged': ExtractedObjectBuffer([
+                ExtractedObjectBufferSemantic(Semantic.ShapeKey, 8, DXGIFormat.R16_FLOAT)
             ]),
         })
 
@@ -217,8 +233,11 @@ class OutputBuilder:
                 scale_hash=shapekeys.scale_hash,
                 vertex_count=shapekeys.shapekey_offsets[-1] - 1,
                 dispatch_y=shapekeys.dispatch_y,
+                dispatch_y_batch0=shapekeys.dispatch_y_batch0,
+                dispatch_y_batch1=shapekeys.dispatch_y_batch1,
                 checksum=shapekeys.cb0_checksum,
                 secondary_checksum=shapekeys.cb0_secondary_checksum,
+                secondary_vertex_offset=shapekeys.cb0_secondary_vertex_offset,
             ) if shapekeys.shapekey_offsets else ExtractedObjectShapeKeys(),
 
             export_format=export_format,

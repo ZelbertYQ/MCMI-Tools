@@ -30,6 +30,14 @@ global $object_guid = {{ extracted_object.index_count }}
 global $mesh_vertex_count = {{ merged_object.vertex_count }}
 {{note("Number of shapekeyed vertices in custom model")}}
 global $shapekey_vertex_count = {{ merged_object.shapekeys.vertex_count }}
+{{note("Number of shapekeyed vertices in custom model batch0")}}
+global $shapekey_vertex_count_batch0 = {{ merged_object.shapekeys.vertex_count_batch0|default(merged_object.shapekeys.vertex_count, true) }}
+{{note("Number of shapekeyed vertices in custom model batch1")}}
+global $shapekey_vertex_count_batch1 = {{ merged_object.shapekeys.vertex_count_batch1|default(0, true) }}
+{{note("Original ShapeKey loader dispatch size of batch0")}}
+global $shapekey_dispatch_size_y_original_batch0 = {{ extracted_object.shapekeys.dispatch_y_batch0|default(extracted_object.shapekeys.dispatch_y, true) }}
+{{note("Original ShapeKey loader dispatch size of batch1")}}
+global $shapekey_dispatch_size_y_original_batch1 = {{ extracted_object.shapekeys.dispatch_y_batch1|default(0, true) }}
 {{note("ID assigned to our mod by WWMI")}}
 global $mod_id = -1000
 {{note("Controls whether our mod is enabled, prevents any overrides from happening if $mod_enabled == 0")}}
@@ -37,12 +45,6 @@ global $mod_id = -1000
 global $mod_enabled = 0
 {{note("Indicates if our object was detected in previous frame")}}
 global $object_detected = 0
-{{note("If set to 1, only the first ShapeKey Loader callback per frame will be processed; later callbacks are skipped")}}
-global persist $mcmi_skip_second_shapekey_batch = 0
-{{note("Internal per-frame latch for ShapeKey Loader callback")}}
-global $mcmi_shapekey_loader_handled = 0
-{{note("Checksum for optional second ShapeKey batch (0 disables secondary matching)")}}
-global persist $mcmi_shapekey_secondary_checksum = {{ extracted_object.shapekeys.secondary_checksum|default(0, true) }}
 {%- if cfg.use_ini_toggles %}
 ; Swap vars aka toggles defaults
 {%- for var in cfg.ini_toggles.vars %}
@@ -61,7 +63,6 @@ global {{ formatter.format_ini_drawvar(obj.name) }} = 1
 if $object_detected
     if $mod_enabled
         post $object_detected = 0
-        post $mcmi_shapekey_loader_handled = 0
         {%- if cfg.use_ini_toggles %}
         run = CommandListProcessToggles
         {%- endif %}
@@ -275,41 +276,36 @@ override_vertex_count = $mesh_vertex_count
 
 {{note("Updates ResourceShapeKeyCBRW that stores offsets of shapekeyed vertex lists, shape key values and multipliers")}}
 [CommandListSetupShapeKeys]
-run = CommandListSetupShapeKeysPrimary
-
-{{note("Primary batch setup (legacy-safe)")}}
-[CommandListSetupShapeKeysPrimary]
-{{note("Pass 4 byte checksum of shapekey offsets to ensure that we only modify expected values")}}
-$\WWMIv1\shapekey_checksum = {{ extracted_object.shapekeys.checksum }}
-{{note("Optional second checksum for games that stream shapekeys in multiple batches")}}
-$\WWMIv1\shapekey_secondary_checksum = $mcmi_shapekey_secondary_checksum
-{{note("Pass buffer with offsets for vertex lists of every shape key of custom model")}}
-cs-t33 = ResourceShapeKeyOffsetBuffer
-{{note("Pass page-2 offsets for secondary shape key batch")}}
-cs-t34 = ResourceShapeKeyOffset2Buffer
+{{note("Pass checksums and offsets for both ShapeKey batches")}}
+$\WWMIv1\shapekey_checksum_batch0 = {{ extracted_object.shapekeys.checksum }}
+$\WWMIv1\shapekey_vertex_offset_original_batch0 = 0
+$\WWMIv1\shapekey_vertex_offset_custom_batch0 = 0
+$\WWMIv1\shapekey_checksum_batch1 = {{ extracted_object.shapekeys.secondary_checksum|default(0, true) }}
+$\WWMIv1\shapekey_vertex_offset_original_batch1 = {{ extracted_object.shapekeys.secondary_vertex_offset|default(0, true) }}
+$\WWMIv1\shapekey_vertex_offset_custom_batch1 = $shapekey_vertex_count_batch0
+{{note("Pass merged offsets buffer containing both ShapeKey pages")}}
+cs-t33 = ResourceShapeKeyOffsetMergedBuffer
 {{note("Pass buffer with custom values for every shape key, allows to control both custom and stock")}}
 cs-u5 = ResourceCustomShapeKeyValuesRW
 {{note("Pass buffer that gonna store result of calculations, required for Shape Key Loader CS to run")}}
 cs-u6 = ResourceShapeKeyCBRW
-{{note("Run ShapeKeyOverrider CS")}}
-run = CustomShader\WWMIv1\ShapeKeyOverrider
+{{note("Run batch-aware ShapeKeyOverrider CS")}}
+run = CustomShader\WWMIv1\ShapeKeyBatchOverrider
 
-{{note("Runs custom Shape Key Loader CS with both vertex-data pages bound")}}
+{{note("Runs custom Shape Key Loader CS via CORE batch dispatcher")}}
 [CommandListLoadShapeKeys]
-{{note("Pass number of shapekeyed vertices to adjust required threads count via dipatch_y")}}
-$\WWMIv1\shapekey_vertex_count = $shapekey_vertex_count
-{{note("Pass page-1 buffer with lists of per-vertex ids for every shape key")}}
-cs-t0 = ResourceShapeKeyVertexIdBuffer
-{{note("Pass page-1 buffer with lists of xyz per-vertex offsets for every shape key")}}
-cs-t1 = ResourceShapeKeyVertexOffsetBuffer
-{{note("Pass page-2 buffer with lists of per-vertex ids for every shape key")}}
-cs-t2 = ResourceShapeKeyVertexId2Buffer
-{{note("Pass page-2 buffer with lists of xyz per-vertex offsets for every shape key")}}
-cs-t3 = ResourceShapeKeyVertexOffset2Buffer
+{{note("Pass custom batch sizes for loader")}}
+$\WWMIv1\shapekey_vertex_count_batch0 = $shapekey_vertex_count_batch0
+$\WWMIv1\shapekey_dispatch_size_y_original_batch0 = $shapekey_dispatch_size_y_original_batch0
+$\WWMIv1\shapekey_vertex_count_batch1 = $shapekey_vertex_count_batch1
+$\WWMIv1\shapekey_dispatch_size_y_original_batch1 = $shapekey_dispatch_size_y_original_batch1
+{{note("Pass merged per-vertex ShapeKey data")}}
+cs-t0 = ResourceShapeKeyVertexIdMergedBuffer
+cs-t1 = ResourceShapeKeyVertexOffsetMergedBuffer
 {{note("Pass buffer with shape key vertex lists offsets, and shape key values & multipliers")}}
 cs-u6 = ResourceShapeKeyCBRW
-{{note("Run ShapeKeyLoader CS (shader decides page by current batch marker)")}}
-run = CustomShader\WWMIv1\ShapeKeyLoader
+{{note("Run CORE batch loader selector")}}
+run = CommandList\WWMIv1\LoadShapeKeysBatch
 
 {{note("Handles WWMI callback fired on original Shape Key Loader CS call")}}
 [TextureOverrideShapeKeyLoaderCallback]
@@ -317,16 +313,11 @@ hash = {{ extracted_object.shapekeys.offsets_hash }}
 match_priority = 0
 if $mod_enabled
     if cs == 3381.3333
-        if $mcmi_skip_second_shapekey_batch == 1 && $mcmi_shapekey_loader_handled == 1
-            handling = skip
-        else
-            handling = skip
-            {{note("Run custom Shape Key Overrider CS to prepare shape key resources for loading")}}
-            run = CommandListSetupShapeKeys
-            {{note("Run custom Shape Key Loader CS to load shape key resources")}}
-            run = CommandListLoadShapeKeys
-            $mcmi_shapekey_loader_handled = 1
-        endif
+        handling = skip
+        {{note("Run custom Shape Key Overrider CS to prepare shape key resources for loading")}}
+        run = CommandListSetupShapeKeys
+        {{note("Run custom Shape Key Loader CS to load shape key resources")}}
+        run = CommandListLoadShapeKeys
     endif
 endif
 

@@ -359,6 +359,162 @@ def parse_texture_hashes_from_folder(folder_path):
     return result
 
 
+def split_ini_sections(lines):
+    preamble = []
+    sections = []
+    current_header = None
+    current_lines = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('[') and stripped.endswith(']'):
+            if current_header is None:
+                preamble = list(current_lines)
+            else:
+                sections.append((current_header, list(current_lines)))
+            current_header = stripped
+            current_lines = [line]
+        else:
+            current_lines.append(line)
+    if current_header is None:
+        preamble = list(current_lines)
+    else:
+        sections.append((current_header, list(current_lines)))
+    return preamble, sections
+
+
+def parse_component0_hash_from_ini(mod_folder):
+    ini_path = os.path.join(mod_folder, 'mod.ini')
+    if not os.path.isfile(ini_path):
+        return None
+    with open(ini_path, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+    _, sections = split_ini_sections(lines)
+    for header, section_lines in sections:
+        if header.lower() != '[textureoverridecomponent0]':
+            continue
+        for line in section_lines:
+            match = re.findall(r'^\s*hash\s*=\s*([a-f0-9]{8})\s*$', line.strip().lower())
+            if len(match) == 1:
+                return match[0]
+    return None
+
+
+def insert_missing_constants(lines, entries):
+    section_start = None
+    for i, line in enumerate(lines):
+        if line.strip().lower() == '[constants]':
+            section_start = i
+            break
+    if section_start is None:
+        return lines
+    section_end = len(lines)
+    for i in range(section_start + 1, len(lines)):
+        stripped = lines[i].strip()
+        if stripped.startswith('[') and stripped.endswith(']'):
+            section_end = i
+            break
+    section_existing = {line.strip().lower() for line in lines[section_start + 1:section_end]}
+    missing = [entry for entry in entries if entry.lower() not in section_existing]
+    if len(missing) == 0:
+        return lines
+    insertion = [f'{entry}\n' for entry in missing]
+    return lines[:section_end] + insertion + lines[section_end:]
+
+
+def insert_missing_present_logic(lines, entries):
+    section_start = None
+    for i, line in enumerate(lines):
+        if line.strip().lower() == '[present]':
+            section_start = i
+            break
+    if section_start is None:
+        return lines
+    section_end = len(lines)
+    for i in range(section_start + 1, len(lines)):
+        stripped = lines[i].strip()
+        if stripped.startswith('[') and stripped.endswith(']'):
+            section_end = i
+            break
+    section_existing = {line.strip().lower() for line in lines[section_start + 1:section_end]}
+    missing = [entry for entry in entries if entry.lower() not in section_existing]
+    if len(missing) == 0:
+        return lines
+    insertion = [f'{entry}\n' for entry in missing]
+    return lines[:section_end] + insertion + lines[section_end:]
+
+
+def insert_lod_override_sections(lines, lod_hashes):
+    if len(lod_hashes) == 0:
+        return lines
+    joined = ''.join(lines).lower()
+    if '[textureoverridelod1]' in joined or '[textureoverridelod2]' in joined:
+        return lines
+    shading_idx = None
+    for i, line in enumerate(lines):
+        if line.strip().lower().startswith('; shading: textures'):
+            shading_idx = i
+            break
+    if shading_idx is None:
+        return lines
+
+    block = ['\n']
+    if 'LOD1' in lod_hashes:
+        block.extend([
+            '[TextureOverrideLOD1]\n',
+            f'hash = {lod_hashes["LOD1"]}\n',
+            '$LOD1 = 1\n',
+            '\n',
+        ])
+    if 'LOD2' in lod_hashes:
+        block.extend([
+            '[TextureOverrideLOD2]\n',
+            f'hash = {lod_hashes["LOD2"]}\n',
+            '$LOD2 = 1\n',
+            '\n',
+        ])
+    return lines[:shading_idx + 1] + block + lines[shading_idx + 1:]
+
+
+def patch_texture_override_conditions(lines):
+    result = list(lines)
+    in_texture_override = False
+    for i, line in enumerate(result):
+        stripped = line.strip()
+        stripped_lower = stripped.lower()
+        if stripped.startswith('[') and stripped.endswith(']'):
+            in_texture_override = re.fullmatch(r'\[textureoverridetexture\d+\]', stripped_lower) is not None
+            continue
+        if in_texture_override and stripped_lower == 'if $object_detected':
+            result[i] = line.replace('if $object_detected', 'if $object_detected || $LOD >= 1')
+    return result
+
+
+def patch_lod0_ini_for_shared_textures(mod_folder, lod_hashes):
+    if len(lod_hashes) == 0:
+        return
+    ini_path = os.path.join(mod_folder, 'mod.ini')
+    if not os.path.isfile(ini_path):
+        return
+    with open(ini_path, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+
+    lines = insert_missing_constants(lines, [
+        'global persist $LOD = 0',
+        'global persist $LOD1 = 0',
+        'global persist $LOD2 = 0',
+    ])
+    lines = insert_missing_present_logic(lines, [
+        '$LOD = $LOD1+$LOD2',
+        '$LOD1 = 0',
+        '$LOD2 = 0',
+    ])
+    lines = insert_lod_override_sections(lines, lod_hashes)
+    lines = patch_texture_override_conditions(lines)
+
+    with open(ini_path, 'w', encoding='utf-8') as f:
+        f.writelines(lines)
+
+
 def dedupe_lod_textures_and_ini(mod_folder, lod_hashes):
     textures_dir = os.path.join(mod_folder, 'Textures')
     if os.path.isdir(textures_dir):
@@ -375,26 +531,34 @@ def dedupe_lod_textures_and_ini(mod_folder, lod_hashes):
         return
     with open(ini_path, 'r', encoding='utf-8') as f:
         lines = f.readlines()
-    sections = []
-    current = []
-    for line in lines:
-        if line.startswith('[') and current:
-            sections.append(current)
-            current = [line]
-        else:
-            current.append(line)
-    if current:
-        sections.append(current)
-    filtered = []
-    for section in sections:
-        header = section[0].strip() if section else ''
+    preamble, sections = split_ini_sections(lines)
+
+    duplicate_texture_indices = set()
+    for header, section in sections:
+        header_lower = header.lower()
+        match_header = re.fullmatch(r'\[textureoverridetexture(\d+)\]', header_lower)
+        if match_header is None:
+            continue
         hash_value = None
         for line in section:
-            match = re.findall(r'^\s*hash\s*=\s*([a-f0-9]{8})\s*$', line.strip().lower())
-            if len(match) == 1:
-                hash_value = match[0]
+            match_hash = re.findall(r'^\s*hash\s*=\s*([a-f0-9]{8})\s*$', line.strip().lower())
+            if len(match_hash) == 1:
+                hash_value = match_hash[0]
                 break
-        if header.lower().startswith('[textureoverride') and hash_value is not None and hash_value in lod_hashes:
+        if hash_value is not None and hash_value in lod_hashes:
+            duplicate_texture_indices.add(match_header.group(1))
+
+    filtered = list(preamble)
+    for header, section in sections:
+        header_lower = header.lower()
+        texture_resource_match = re.fullmatch(r'\[resourcetexture(\d+)\]', header_lower)
+        texture_override_match = re.fullmatch(r'\[textureoverridetexture(\d+)\]', header_lower)
+        texture_idx = None
+        if texture_resource_match is not None:
+            texture_idx = texture_resource_match.group(1)
+        elif texture_override_match is not None:
+            texture_idx = texture_override_match.group(1)
+        if texture_idx is not None and texture_idx in duplicate_texture_indices:
             continue
         filtered.extend(section)
     with open(ini_path, 'w', encoding='utf-8') as f:
@@ -1164,6 +1328,15 @@ class MCMI_Export(bpy.types.Operator):
                             dedupe_lod_textures_and_ini(cfg.mod_output_folder, lod0_hashes)
                         finally:
                             cleanup_temp_collection(temp_collection)
+
+                    lod_hashes = {}
+                    for lod_name in ['LOD1', 'LOD2']:
+                        lod_mod_folder = str(resolve_path(original_mod_output) / lod_name)
+                        hash_value = parse_component0_hash_from_ini(lod_mod_folder)
+                        if hash_value:
+                            lod_hashes[lod_name] = hash_value
+
+                    patch_lod0_ini_for_shared_textures(original_mod_output, lod_hashes)
                 finally:
                     cfg.component_collection = original_component_collection
                     cfg.object_source_folder = original_object_source
