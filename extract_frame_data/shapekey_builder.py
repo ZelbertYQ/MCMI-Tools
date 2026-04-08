@@ -9,20 +9,22 @@ from .data_extractor import ShapeKeyData, DrawData
 
 
 @dataclass
+class ShapeKeysDispatch:
+    vertex_offset: int = 0
+    vertex_count: int = 0
+    checksum: int = 0
+    dispatch_y: int = 0
+    shapekey_count: int = 0
+
+
+@dataclass
 class ShapeKeys:
     offsets_hash: str
     scale_hash: str = ''
-    dispatch_y: int = 0
-    dispatch_y_batch0: int = 0
-    dispatch_y_batch1: int = 0
+    vertex_ids_hash: str = ''
+    vertex_offsets_hash: str = ''
+    dispatches: list[ShapeKeysDispatch] = field(default_factory=list)
     shapekey_offsets: list = field(default_factory=lambda: [])
-    # Sum of first 4 raw cb0 uint values (cb0[0].xyzw), used by ShapeKeyOverrider checksum
-    cb0_checksum: int = 0
-    # Optional checksum for the second loader batch when game streams shapekeys in 2 passes.
-    cb0_secondary_checksum: int = 0
-    # Raw cb0[65].y value of the second batch in original pipeline.
-    # New CORE uses this value to remap batch-local vertex offsets.
-    cb0_secondary_vertex_offset: int = 0
     # ShapeKey ID based indexed list of {VertexID: VertexOffsets}
     shapekeys_index: List[Dict[int, List[float]]] = field(default_factory=lambda: [])
     # Vertex ID based indexed dict of {ShapeKeyID: VertexOffsets}
@@ -75,130 +77,79 @@ class ShapeKeys:
 
 @dataclass
 class ShapeKeyBuilder:
-    # Input: Dict mapping output hash -> list of ShapeKeyData (one per CS_1 batch)
-    shapekey_data: Dict[str, list]
+    # Input
+    shapekey_data: Dict[str, ShapeKeyData]
     # Output
     shapekeys: Dict[str, ShapeKeys] = field(init=False)
 
     def __post_init__(self):
         self.shapekeys = {}
 
-        for shapekey_hash, shapekey_data_list in self.shapekey_data.items():
-
-            # Parse cb0 from each batch and sort by base_offset (cb0[65].y)
-            batches = []
-            for sd in shapekey_data_list:
-                all_cb0_values = sd.shapekey_offset_buffer.get_values(AbstractSemantic(Semantic.RawData))
-                # cb0[65].y stores the base offset for this batch (0 for the first batch)
-                base_offset = all_cb0_values[65 * 4 + 1]
-                batches.append((base_offset, sd, all_cb0_values))
-
-            batches.sort(key=lambda x: x[0])
-
-            # Build combined offset list by merging all batches
-            # Each batch's cb0 rows 0-31 contain 128 uint offset values
-            # Offsets index into the shared t0/t1 buffers
-            # Non-first batches need their offsets shifted by base_offset
-            combined_offsets = []
-            for batch_idx, (base_offset, sd, all_cb0_values) in enumerate(batches):
-                raw_offsets = list(all_cb0_values[0:128])
-
-                # Find end of strictly monotonic region (padding starts where values stop increasing)
-                mono_count = 1
-                for i in range(1, 128):
-                    if raw_offsets[i] > raw_offsets[i - 1]:
-                        mono_count += 1
-                    else:
-                        break
-
-                if batch_idx == 0:
-                    # First batch: use offsets directly
-                    combined_offsets.extend(raw_offsets[:mono_count])
-                else:
-                    # Subsequent batches: shift by base_offset, skip first value (shared boundary)
-                    for i in range(1, mono_count):
-                        combined_offsets.append(base_offset + raw_offsets[i])
-
-            # Collect checksums from each batch cb0[0:4], preserving order and de-duplicating.
-            checksums = []
-            for _, _, cb0_values in batches:
-                checksum = sum(cb0_values[0:4])
-                if checksum not in checksums:
-                    checksums.append(checksum)
-
-            if len(batches) > 1:
-                print(
-                    f'ShapeKey multi-batch merge: {len(batches)} batches, {len(combined_offsets)} offsets, '
-                    f'{len(combined_offsets) - 1} shapekeys, checksums={checksums}'
-                )
-
-            cb0_checksum = checksums[0] if checksums else 0
-            cb0_secondary_checksum = checksums[1] if len(checksums) > 1 else 0
-            cb0_secondary_vertex_offset = batches[1][0] if len(batches) > 1 else 0
-            dispatch_y_batch0 = batches[0][1].dispatch_y if batches else 0
-            dispatch_y_batch1 = batches[1][1].dispatch_y if len(batches) > 1 else 0
-
-            # Use first batch's cb0 for main pipeline compatibility.
-            first_cb0 = batches[0][2]
-
-            # Use first batch's t0/t1 buffers (shared across batches, same resource hash)
-            first_sd = batches[0][1]
-            vertex_ids = first_sd.shapekey_vertex_id_buffer.get_values(AbstractSemantic(Semantic.RawData))
-            vertex_offsets = first_sd.shapekey_vertex_offset_buffer.get_values(AbstractSemantic(Semantic.RawData))
-
-            # R32 vertex IDs and R16G16B16_FLOAT offsets are parallel arrays.
-            # Keep processing inside the shortest valid range.
-            max_entries = min(len(vertex_ids), len(vertex_offsets) // 6)
-
-            shapekey_offsets = combined_offsets
-
-            # Defensive clamp: malformed/misdetected offsets must not index outside buffers.
-            if shapekey_offsets:
-                clamped_offsets = []
-                prev = 0
-                for off in shapekey_offsets:
-                    safe_off = max(0, min(off, max_entries))
-                    if safe_off < prev:
-                        safe_off = prev
-                    clamped_offsets.append(safe_off)
-                    prev = safe_off
-                shapekey_offsets = clamped_offsets
-
-            last_data_entry_id = shapekey_offsets[-1]
+        for shapekey_hash, shapekey_data in self.shapekey_data.items():
 
             # Process shapekey entries, we'll build both VertexID and ShapeKeyID based outputs for fast indexing
             shapekeys_index = []
             indexed_shapekeys = {}
-            for shapekey_id, first_entry_id in enumerate(shapekey_offsets):
-                # Stop processing if next entries have no data
-                if first_entry_id >= last_data_entry_id:
-                    break
-                # Guard: last element has no successor to read the next offset from
-                if shapekey_id + 1 >= len(shapekey_offsets):
-                    break
-                # Process all entries from current shapekey offset 'till offset of the next shapekey
-                entries = {}
-                for entry_id in range(first_entry_id, shapekey_offsets[shapekey_id + 1]):
-                    if entry_id >= max_entries:
+            indexed_offsets = []
+
+            dispatches = []
+
+            shapekey_id_offset = 0
+
+            for entry in shapekey_data.entries:
+                cb_data = entry.shapekey_offset_buffer.get_values(AbstractSemantic(Semantic.RawData))
+                batch_vertex_offset = cb_data[261]
+
+                if batch_vertex_offset > 0 and indexed_offsets[-1] != batch_vertex_offset:
+                    raise ValueError(f'Invalid offset {batch_vertex_offset} for shapekey batch (last offset is {indexed_offsets[-1]})')
+
+                shapekey_offsets = cb_data[0:128]
+                vertex_ids = entry.shapekey_vertex_id_buffer.get_values(AbstractSemantic(Semantic.RawData))[batch_vertex_offset:]
+                vertex_offsets = entry.shapekey_vertex_offset_buffer.get_values(AbstractSemantic(Semantic.RawData))[batch_vertex_offset*6:]
+
+                last_data_entry_id = shapekey_offsets[-1]
+                shapekey_count = 0
+
+                for shapekey_id, first_entry_id in enumerate(shapekey_offsets):
+                    # Stop processing if next entries have no data
+                    if first_entry_id >= last_data_entry_id:
+                        shapekey_count = shapekey_id
                         break
-                    vertex_id = vertex_ids[entry_id]
-                    vertex_offset = vertex_offsets[entry_id * 6:entry_id * 6 + 3]
-                    entries[vertex_id] = vertex_offset
-                    if vertex_id not in indexed_shapekeys:
-                        indexed_shapekeys[vertex_id] = {}
-                    indexed_shapekeys[vertex_id][shapekey_id] = vertex_offset
-                shapekeys_index.append(entries)
+                    # Process all entries from current shapekey offset 'till offset of the next shapekey
+                    entries = {}
+                    for entry_id in range(first_entry_id, shapekey_offsets[shapekey_id + 1]):
+                        vertex_id = vertex_ids[entry_id]
+                        vertex_offset = vertex_offsets[entry_id * 6:entry_id * 6 + 3]
+                        entries[vertex_id] = vertex_offset
+                        if vertex_id not in indexed_shapekeys:
+                            indexed_shapekeys[vertex_id] = {}
+                        indexed_shapekeys[vertex_id][shapekey_id_offset + shapekey_id] = vertex_offset
+                    shapekeys_index.append(entries)
+
+                dispatches.append(ShapeKeysDispatch(
+                    vertex_offset=batch_vertex_offset,
+                    vertex_count=shapekey_offsets[-1],
+                    checksum=sum(shapekey_offsets[0:4]),
+                    dispatch_y=entry.dispatch_y,
+                    shapekey_count=shapekey_count,
+                ))
+
+                if batch_vertex_offset > 0:
+                    shapekey_offsets = [batch_vertex_offset + x for x in shapekey_offsets]
+                    shapekey_offsets = shapekey_offsets[1:]
+
+                indexed_offsets += shapekey_offsets
+                shapekey_id_offset += shapekey_count
+
+            # dispatches = sorted(dispatches, key=lambda d: d.vertex_offset)
 
             self.shapekeys[shapekey_hash] = ShapeKeys(
-                offsets_hash=first_sd.shapekey_hash,
-                scale_hash=first_sd.shapekey_scale_hash,
-                dispatch_y=sum(sd.dispatch_y for _, sd, _ in batches),
-                dispatch_y_batch0=dispatch_y_batch0,
-                dispatch_y_batch1=dispatch_y_batch1,
-                shapekey_offsets=shapekey_offsets,
-                cb0_checksum=cb0_checksum,
-                cb0_secondary_checksum=cb0_secondary_checksum,
-                cb0_secondary_vertex_offset=cb0_secondary_vertex_offset,
+                offsets_hash=shapekey_data.shapekey_hash,
+                scale_hash=shapekey_data.shapekey_scale_hash,
+                vertex_ids_hash=shapekey_data.vertex_ids_hash,
+                vertex_offsets_hash=shapekey_data.vertex_offsets_hash,
+                dispatches=dispatches,
+                shapekey_offsets=indexed_offsets,
                 shapekeys_index=shapekeys_index,
                 indexed_shapekeys=indexed_shapekeys,
             )

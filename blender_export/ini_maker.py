@@ -1,6 +1,7 @@
 import hashlib
 import os
 import time
+import traceback
 import bpy
 
 from typing import List, Dict, Union, Optional, Tuple
@@ -167,7 +168,9 @@ class IniMaker:
             rendered_string = template.render(vars(self))
         except UndefinedError as e:
                 raise ValueError(f'Ini Template filling error:\n'
-                                 f'{e}')
+                                 f'{e}\n\n'
+                                 f'Traceback:\n'
+                                 f'{traceback.format_exc()}')
 
         result = ''.join([line + '\n' for line in rendered_string.split('\n') if not line.strip().startswith(';DEL')])
 

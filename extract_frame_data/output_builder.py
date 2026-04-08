@@ -10,7 +10,7 @@ from ..migoto_io.dump_parser.filename_parser import ResourceDescriptor
 
 from .shapekey_builder import ShapeKeys
 from .component_builder import MeshObject
-from .metadata_format import ExtractedObject, ExtractedObjectComponent, ExtractedObjectShapeKeys, ExtractedObjectBuffer, ExtractedObjectBufferSemantic
+from .metadata_format import ExtractedObject, ExtractedObjectComponent, ExtractedObjectShapeKeys, ExtractedObjectShapeKeysBatch, ExtractedObjectBuffer, ExtractedObjectBufferSemantic
 
 
 @dataclass
@@ -183,29 +183,11 @@ class OutputBuilder:
             'ShapeKeyOffset': ExtractedObjectBuffer([
                 ExtractedObjectBufferSemantic(Semantic.ShapeKey, 0, DXGIFormat.R32G32B32A32_UINT)
             ]),
-            'ShapeKeyOffset2': ExtractedObjectBuffer([
-                ExtractedObjectBufferSemantic(Semantic.ShapeKey, 3, DXGIFormat.R32G32B32A32_UINT)
-            ]),
-            'ShapeKeyOffsetMerged': ExtractedObjectBuffer([
-                ExtractedObjectBufferSemantic(Semantic.ShapeKey, 6, DXGIFormat.R32G32B32A32_UINT)
-            ]),
             'ShapeKeyVertexId': ExtractedObjectBuffer([
                 ExtractedObjectBufferSemantic(Semantic.ShapeKey, 1, DXGIFormat.R32_UINT)
             ]),
-            'ShapeKeyVertexId2': ExtractedObjectBuffer([
-                ExtractedObjectBufferSemantic(Semantic.ShapeKey, 4, DXGIFormat.R32_UINT)
-            ]),
-            'ShapeKeyVertexIdMerged': ExtractedObjectBuffer([
-                ExtractedObjectBufferSemantic(Semantic.ShapeKey, 7, DXGIFormat.R32_UINT)
-            ]),
             'ShapeKeyVertexOffset': ExtractedObjectBuffer([
                 ExtractedObjectBufferSemantic(Semantic.ShapeKey, 2, DXGIFormat.R16_FLOAT)
-            ]),
-            'ShapeKeyVertexOffset2': ExtractedObjectBuffer([
-                ExtractedObjectBufferSemantic(Semantic.ShapeKey, 5, DXGIFormat.R16_FLOAT)
-            ]),
-            'ShapeKeyVertexOffsetMerged': ExtractedObjectBuffer([
-                ExtractedObjectBufferSemantic(Semantic.ShapeKey, 8, DXGIFormat.R16_FLOAT)
             ]),
         })
 
@@ -231,13 +213,19 @@ class OutputBuilder:
             shapekeys=ExtractedObjectShapeKeys(
                 offsets_hash=shapekeys.offsets_hash,
                 scale_hash=shapekeys.scale_hash,
-                vertex_count=shapekeys.shapekey_offsets[-1] - 1,
-                dispatch_y=shapekeys.dispatch_y,
-                dispatch_y_batch0=shapekeys.dispatch_y_batch0,
-                dispatch_y_batch1=shapekeys.dispatch_y_batch1,
-                checksum=shapekeys.cb0_checksum,
-                secondary_checksum=shapekeys.cb0_secondary_checksum,
-                secondary_vertex_offset=shapekeys.cb0_secondary_vertex_offset,
+                vertex_ids_hash=shapekeys.vertex_ids_hash,
+                vertex_offsets_hash=shapekeys.vertex_offsets_hash,
+                vertex_count=shapekeys.shapekey_offsets[-1],
+                shapekey_count=sum([dispatch.shapekey_count for dispatch in shapekeys.dispatches]),
+                batches=[
+                    ExtractedObjectShapeKeysBatch(
+                        vertex_offset=dispatch.vertex_offset,
+                        vertex_count=dispatch.vertex_count,
+                        shapekey_count=dispatch.shapekey_count,
+                        dispatch_y=dispatch.dispatch_y,
+                        checksum=dispatch.checksum,
+                    ) for dispatch in shapekeys.dispatches
+                ],
             ) if shapekeys.shapekey_offsets else ExtractedObjectShapeKeys(),
 
             export_format=export_format,

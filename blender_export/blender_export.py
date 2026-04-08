@@ -15,7 +15,7 @@ from ..migoto_io.data_model.data_model import DataModel
 
 from ..extract_frame_data.metadata_format import read_metadata, ExtractedObject
 
-from .object_merger import ObjectMerger, SkeletonType, MergedObject
+from .object_merger import ObjectMerger, SkeletonType, MergedObject, MergedObjectShapeKeysBatch
 from .metadata_collector import Version, ModInfo
 from .texture_collector import Texture, get_textures
 from .ini_maker import IniMaker
@@ -163,17 +163,37 @@ class ModExporter:
             index_layout)
 
         self.merged_object.vertex_count = vertex_count
-        self.merged_object.shapekeys.vertex_count_batch0 = len(self.buffers.get('ShapeKeyVertexId', []))
-        self.merged_object.shapekeys.vertex_count_batch1 = len(self.buffers.get('ShapeKeyVertexId2', []))
-        self.merged_object.shapekeys.vertex_count = (
-            self.merged_object.shapekeys.vertex_count_batch0
-            + self.merged_object.shapekeys.vertex_count_batch1
-        )
+
+        # Build shapekeys batches metadata (171 pipeline)
         shapekey_offsets = self.buffers.get('ShapeKeyOffset', None)
-        if shapekey_offsets is not None and len(shapekey_offsets) > 0:
-            self.merged_object.shapekeys.shapekey_count = max(0, len(shapekey_offsets) - 1)
-        else:
-            self.merged_object.shapekeys.shapekey_count = 0
+        if shapekey_offsets:
+            batches_count = int(len(shapekey_offsets.data) / 128)
+
+            for batch_id in range(batches_count):
+                batch_vertex_count = shapekey_offsets.data[((batch_id + 1) * 128) - 1]
+                self.merged_object.shapekeys.batches.append(MergedObjectShapeKeysBatch(
+                    vertex_count=batch_vertex_count,
+                    vertex_offset=self.merged_object.shapekeys.vertex_count,
+                ))
+                self.merged_object.shapekeys.vertex_count += batch_vertex_count
+
+            self.merged_object.shapekeys.vertex_count_batch0 = (
+                self.merged_object.shapekeys.batches[0].vertex_count
+                if len(self.merged_object.shapekeys.batches) > 0 else 0
+            )
+            self.merged_object.shapekeys.vertex_count_batch1 = (
+                self.merged_object.shapekeys.batches[1].vertex_count
+                if len(self.merged_object.shapekeys.batches) > 1 else 0
+            )
+            self.merged_object.shapekeys.shapekey_count = max(0, len(shapekey_offsets.data) - batches_count)
+
+            # Ensure offsets sanity
+            shapekey_vertex_ids = self.buffers.get('ShapeKeyVertexId', None)
+            if shapekey_vertex_ids is not None and self.merged_object.shapekeys.vertex_count != len(shapekey_vertex_ids):
+                raise ValueError(
+                    f'Total vertex count in ShapeKeyOffset across {batches_count} bathces '
+                    f'does not match ShapeKeyVertexId size of {len(shapekey_vertex_ids)}!'
+                )
 
         remapped_vgs_counts = self.buffers.pop('BlendRemapLayout', None)
         if remapped_vgs_counts is not None:

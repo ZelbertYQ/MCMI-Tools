@@ -101,6 +101,8 @@ configuration = Configuration(
 
         'SHAPEKEY_OUTPUT': DataMap([Source('SHAPEKEY_CS_1', ShaderType.Empty, SlotType.UAV, SlotId(0))]),
         'SHAPEKEY_SCALE_OUTPUT': DataMap([Source('SHAPEKEY_CS_1', ShaderType.Empty, SlotType.UAV, SlotId(1))]),
+        'SHAPEKEY_VERTEX_ID_HASH': DataMap([Source('SHAPEKEY_CS_1', ShaderType.Compute, SlotType.Texture, SlotId(0))]),
+        'SHAPEKEY_VERTEX_OFFSET_HASH': DataMap([Source('SHAPEKEY_CS_1', ShaderType.Compute, SlotType.Texture, SlotId(1))]),
 
 
         'SHAPEKEY_INPUT': DataMap([Source('DRAW_VS', ShaderType.Empty, SlotType.VertexBuffer, SlotId(6), ignore_missing=True)]),
@@ -238,8 +240,12 @@ def collect_raw_resources(output_directory, data_extractor: DataExtractor, vb_ha
 
     for sk_hash, sk_data_list in data_extractor.shape_key_data.items():
         if sk_hash in shapekey_hashes:
-            for sk_data in sk_data_list:
-                paths.update(sk_data.raw_resource_paths)
+            if hasattr(sk_data_list, 'entries'):
+                for sk_entry in sk_data_list.entries:
+                    paths.update(getattr(sk_entry, 'raw_resource_paths', ()))
+            else:
+                for sk_data in sk_data_list:
+                    paths.update(getattr(sk_data, 'raw_resource_paths', ()))
 
     call_ids = set()
     for path in paths:

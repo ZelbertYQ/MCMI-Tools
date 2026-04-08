@@ -3,6 +3,7 @@ import re
 import numpy
 import bpy
 import json
+import math
 
 
 from typing import Tuple, List, Dict, Optional
@@ -14,13 +15,6 @@ from ...migoto_io.data_model.data_model import DataModel
 
 
 class DataModelWWMI(DataModel):
-    # Export full currently observed range for new characters: IDs 0..160.
-    # Offset buffer stores one extra terminal cursor, so length is MAX_SHAPEKEY_COUNT + 1.
-    MAX_SHAPEKEY_COUNT = 161
-    SHAPEKEY_PAGE_SIZE = 128
-    # WuWa's second shapekey batch appears to be aligned with a seam slot at the page boundary.
-    # Use 127 as page-2 start so runtime ids >=128 map to expected offsets.
-    SHAPEKEY_PAGE2_START = 127
     MAX_TEXCOORD_SLOTS = 5
 
     buffers_format: Dict[str, BufferLayout] = {
@@ -51,29 +45,11 @@ class DataModelWWMI(DataModel):
         'ShapeKeyOffset': BufferLayout([
             BufferSemantic(AbstractSemantic(Semantic.ShapeKey, 0), DXGIFormat.R32G32B32A32_UINT),
         ]),
-        'ShapeKeyOffset2': BufferLayout([
-            BufferSemantic(AbstractSemantic(Semantic.ShapeKey, 3), DXGIFormat.R32G32B32A32_UINT),
-        ]),
-        'ShapeKeyOffsetMerged': BufferLayout([
-            BufferSemantic(AbstractSemantic(Semantic.ShapeKey, 6), DXGIFormat.R32G32B32A32_UINT),
-        ]),
         'ShapeKeyVertexId': BufferLayout([
             BufferSemantic(AbstractSemantic(Semantic.ShapeKey, 1), DXGIFormat.R32_UINT),
         ]),
-        'ShapeKeyVertexId2': BufferLayout([
-            BufferSemantic(AbstractSemantic(Semantic.ShapeKey, 4), DXGIFormat.R32_UINT),
-        ]),
-        'ShapeKeyVertexIdMerged': BufferLayout([
-            BufferSemantic(AbstractSemantic(Semantic.ShapeKey, 7), DXGIFormat.R32_UINT),
-        ]),
         'ShapeKeyVertexOffset': BufferLayout([
             BufferSemantic(AbstractSemantic(Semantic.ShapeKey, 2), DXGIFormat.R16_FLOAT),
-        ]),
-        'ShapeKeyVertexOffset2': BufferLayout([
-            BufferSemantic(AbstractSemantic(Semantic.ShapeKey, 5), DXGIFormat.R16_FLOAT),
-        ]),
-        'ShapeKeyVertexOffsetMerged': BufferLayout([
-            BufferSemantic(AbstractSemantic(Semantic.ShapeKey, 8), DXGIFormat.R16_FLOAT),
         ]),
     }
 
@@ -188,10 +164,6 @@ class DataModelWWMI(DataModel):
             print(f'Skipped shapekeys fetching!')
             return {}
 
-        shapekey_offsets = []
-        shapekey_vertex_ids_by_key = {}
-        shapekey_vertex_offsets_by_key = {}
-
         shapekey_pattern = re.compile(r'.*(?:deform|custom)[_ -]*(\d+).*')
         shapekey_ids = {}
         
@@ -200,123 +172,61 @@ class DataModelWWMI(DataModel):
             if len(match) == 0:
                 continue
             shapekey_id = int(match[0])
-            if shapekey_id not in shapekey_ids:
-                shapekey_ids[shapekey_id] = []
-            shapekey_ids[shapekey_id].append(shapekey.name)
+            shapekey_ids[shapekey_id] = shapekey.name
 
-        for shapekey_id in shapekey_ids.keys():
-            shapekey_ids[shapekey_id].sort()
+        shapekeys = self.data_extractor.get_shapekey_data(obj, names_filter=list(shapekey_ids.values()), deduct_basis=True)
 
-        shapekey_names = []
-        for names in shapekey_ids.values():
-            shapekey_names.extend(names)
+        max_key_id = max(shapekey_ids.keys())
+        batch_count = math.ceil(max_key_id / 127)
 
-        shapekeys = self.data_extractor.get_shapekey_data(obj, names_filter=shapekey_names, deduct_basis=True)
+        shapekey_offsets, shapekey_vertex_ids, shapekey_vertex_offsets = [], [], []
 
-        shapekey_verts_count = 0
-        num_shapekeys = max(shapekey_ids.keys()) + 1 if shapekey_ids else 0
-        if num_shapekeys > self.MAX_SHAPEKEY_COUNT:
-            print(
-                f'Warning: Model has {num_shapekeys} shapekeys, but current MCMI core supports '
-                f'max {self.MAX_SHAPEKEY_COUNT}. Capping export.'
-            )
-            num_shapekeys = self.MAX_SHAPEKEY_COUNT
-        for group_id in range(num_shapekeys):
-            shapekey = None
-            for shapekey_name in shapekey_ids.get(group_id, []):
-                shapekey_part = shapekeys.get(shapekey_name, None)
-                if shapekey_part is None:
+        for batch_id in range(batch_count):
+            # Offsets sequence always starts with 0 for any batch
+            shapekey_offsets.append(0)
+            shapekey_verts_count = 0
+
+            # Single batch contains up to 127 shapekeys (since first value is always 0)
+            # So 254 shapekeys should be divided to 2 batches:
+            # Batch 0: from 0   to 126 (aka range(0,   127))
+            # Batch 1: from 127 to 253 (aka range(127, 254))
+            shapekey_id_offset = batch_id * 127
+
+            for shapekey_id in range(shapekey_id_offset, shapekey_id_offset + 127):
+
+                shapekey = shapekeys.get(shapekey_ids.get(shapekey_id, -1), None)
+                if shapekey is None or not (-0.00000001 > numpy.min(shapekey) or numpy.max(shapekey) > 0.00000001):
+                    shapekey_offsets.append(shapekey_verts_count)
                     continue
-                if shapekey is None:
-                    shapekey = shapekey_part.copy()
-                else:
-                    shapekey = shapekey + shapekey_part
-            if shapekey is None or not (-0.00000001 > numpy.min(shapekey) or numpy.max(shapekey) > 0.00000001):
-                shapekey_offsets.extend([shapekey_verts_count if shapekey_verts_count != 0 else 0])
-                continue
 
-            shapekey_offsets.extend([shapekey_verts_count])
+                shapekey = shapekey[vertex_ids]
 
-            shapekey = shapekey[vertex_ids]
+                shapekey_vert_ids = numpy.where(numpy.any(shapekey != 0, axis=1))[0]
 
-            shapekey_vert_ids = numpy.where(numpy.any(shapekey != 0, axis=1))[0]
+                shapekey_verts_count += len(shapekey_vert_ids)
+                shapekey_offsets.append(shapekey_verts_count)
 
-            shapekey_vertex_ids_by_key[group_id] = shapekey_vert_ids
-            shapekey_vertex_offsets_by_key[group_id] = shapekey[shapekey_vert_ids]
-            shapekey_verts_count += len(shapekey_vert_ids)
-            
-        if len(shapekey_vertex_ids_by_key) == 0:
+                shapekey_vertex_ids.extend(shapekey_vert_ids)
+                shapekey_vertex_offsets.extend(shapekey[shapekey_vert_ids])
+
+        if len(shapekey_vertex_ids) == 0:
             return {}
-
-        # We allow up to MAX_SHAPEKEY_COUNT in offset array to pretend these shapekeys exist (prevent crash on indexing), 
-        # but they will all point to the end of vertex data, mapping to 0 offset values.
-        shapekey_offsets.append(shapekey_verts_count)
-        if len(shapekey_offsets) > self.MAX_SHAPEKEY_COUNT + 1:
-            shapekey_offsets = shapekey_offsets[:self.MAX_SHAPEKEY_COUNT + 1]
-            shapekey_offsets[-1] = shapekey_verts_count
-        else:
-            shapekey_offsets.extend([shapekey_verts_count] * ((self.MAX_SHAPEKEY_COUNT + 1) - len(shapekey_offsets)))
 
         shapekey_offsets = numpy.array(shapekey_offsets, dtype=numpy.uint32)
 
-        def build_page_data(page_start: int, stop_before_key: Optional[int] = None):
-            page_offsets = numpy.zeros(self.SHAPEKEY_PAGE_SIZE, dtype=numpy.uint32)
-            page_vertex_ids: List[numpy.ndarray] = []
-            page_vertex_offsets: List[numpy.ndarray] = []
-            cursor = 0
+        shapekey_vertex_offsets_np = numpy.zeros(len(shapekey_vertex_offsets), dtype=(numpy.float16, 6))
+        shapekey_vertex_offsets_np[:, 0:3] = shapekey_vertex_offsets
 
-            for local_id in range(self.SHAPEKEY_PAGE_SIZE):
-                global_id = page_start + local_id
-                page_offsets[local_id] = cursor
+        if mirror_mesh:
+            shapekey_vertex_offsets_np[:, 0] *= -1
 
-                if stop_before_key is not None and global_id >= stop_before_key:
-                    continue
+        shapekey_vertex_ids = numpy.array(shapekey_vertex_ids, dtype=numpy.uint32)
 
-                ids = shapekey_vertex_ids_by_key.get(global_id, None)
-                offs = shapekey_vertex_offsets_by_key.get(global_id, None)
-                if ids is None or offs is None or len(ids) == 0:
-                    continue
+        buffers['ShapeKeyOffset'].set_data(shapekey_offsets)
+        buffers['ShapeKeyVertexId'].set_data(shapekey_vertex_ids)
+        buffers['ShapeKeyVertexOffset'].set_data(shapekey_vertex_offsets_np)
 
-                page_vertex_ids.append(ids)
-                page_vertex_offsets.append(offs)
-                cursor += len(ids)
-
-            if len(page_vertex_ids) > 0:
-                page_vertex_ids_np = numpy.concatenate(page_vertex_ids).astype(numpy.uint32, copy=False)
-                page_vertex_offsets_np = numpy.concatenate(page_vertex_offsets, axis=0)
-            else:
-                page_vertex_ids_np = numpy.zeros(0, dtype=numpy.uint32)
-                page_vertex_offsets_np = numpy.zeros((0, 3), dtype=numpy.float32)
-
-            page_vertex_offsets_packed = numpy.zeros(len(page_vertex_offsets_np), dtype=(numpy.float16, 6))
-            page_vertex_offsets_packed[:, 0:3] = page_vertex_offsets_np
-
-            if mirror_mesh:
-                page_vertex_offsets_packed[:, 0] *= -1
-
-            return page_offsets, page_vertex_ids_np, page_vertex_offsets_packed
-
-        # Page0 keeps keys 0..126. Slot 127 is a terminal cursor for key126.
-        page0_offsets, page0_ids, page0_offsets_xyz = build_page_data(0, stop_before_key=self.SHAPEKEY_PAGE2_START)
-        # Page1 maps local 0..127 to global 127..254.
-        page1_offsets, page1_ids, page1_offsets_xyz = build_page_data(self.SHAPEKEY_PAGE2_START)
-
-        merged_offsets = numpy.concatenate((page0_offsets, page1_offsets), axis=0)
-        merged_ids = numpy.concatenate((page0_ids, page1_ids), axis=0)
-        merged_offsets_xyz = numpy.concatenate((page0_offsets_xyz, page1_offsets_xyz), axis=0)
-
-        buffers['ShapeKeyOffset'].set_data(page0_offsets)
-        buffers['ShapeKeyOffset2'].set_data(page1_offsets)
-        buffers['ShapeKeyOffsetMerged'].set_data(merged_offsets)
-        buffers['ShapeKeyVertexId'].set_data(page0_ids)
-        buffers['ShapeKeyVertexOffset'].set_data(page0_offsets_xyz)
-        buffers['ShapeKeyVertexId2'].set_data(page1_ids)
-        buffers['ShapeKeyVertexOffset2'].set_data(page1_offsets_xyz)
-        buffers['ShapeKeyVertexIdMerged'].set_data(merged_ids)
-        buffers['ShapeKeyVertexOffsetMerged'].set_data(merged_offsets_xyz)
-
-        total_shapekeyed_vertices = len(page0_ids) + len(page1_ids)
-        print(f'Shape Keys formatting time: {time.time() - start_time :.3f}s ({total_shapekeyed_vertices} shapekeyed vertices)')
+        print(f'Shape Keys formatting time: {time.time() - start_time :.3f}s ({len(shapekey_vertex_ids)} shapekeyed vertices)')
 
         return buffers
 
