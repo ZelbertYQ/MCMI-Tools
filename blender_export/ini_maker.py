@@ -174,12 +174,62 @@ class IniMaker:
 
         result = ''.join([line + '\n' for line in rendered_string.split('\n') if not line.strip().startswith(';DEL')])
 
+        if not cfg.update_textures:
+            result = self.replace_shading_textures_from_existing(result, cfg)
+
         if with_checksum:
             result = self.with_checksum(result)
         
         self.ini_string = result
 
         return result
+
+    @staticmethod
+    def is_section_heading(line: str) -> bool:
+        stripped = line.strip().lower()
+        return stripped.startswith(';') and '---' in stripped
+
+    @staticmethod
+    def strip_checksum_line(lines):
+        if len(lines) == 0:
+            return lines
+        if lines[-1].strip().lower().startswith('; sha256 checksum:'):
+            return lines[:-1]
+        return lines
+
+    @classmethod
+    def find_shading_textures_range(cls, lines):
+        start = None
+        for i, line in enumerate(lines):
+            if line.strip().lower().startswith('; shading: textures'):
+                start = i
+                break
+        if start is None:
+            return None
+        end = len(lines)
+        for i in range(start + 1, len(lines)):
+            if cls.is_section_heading(lines[i]):
+                end = i
+                break
+        return (start, end)
+
+    def replace_shading_textures_from_existing(self, ini_string: str, cfg: MCMI_Settings) -> str:
+        ini_path = resolve_path(cfg.mod_output_folder) / 'mod.ini'
+        if not ini_path.is_file():
+            return ini_string
+        with open(ini_path, 'r', encoding='utf-8') as f:
+            existing_lines = self.strip_checksum_line(f.readlines())
+
+        new_lines = ini_string.splitlines(keepends=True)
+        new_range = self.find_shading_textures_range(new_lines)
+        old_range = self.find_shading_textures_range(existing_lines)
+        if new_range is None or old_range is None:
+            return ini_string
+
+        new_start, new_end = new_range
+        old_start, old_end = old_range
+        merged = new_lines[:new_start] + existing_lines[old_start:old_end] + new_lines[new_end:]
+        return ''.join(merged)
 
     def write(self, ini_string: str = None, ini_path = None):
         if ini_path is None:

@@ -30,12 +30,15 @@ def get_textures(object_source_folder: Path, exclude_hashes: List[str]):
 
             texture_hash = result[0]
 
+            source_ext = Path(texture_filename).suffix.lower() or '.dds'
+            export_filename = f'{texture_hash}{source_ext}'
+
             if exclude_hashes and texture_hash in exclude_hashes:
                 continue
 
             textures[texture_hash] = Texture(
                 hash=texture_hash,
                 path=object_source_folder / texture_filename,
-                filename=texture_filename,
+                filename=export_filename,
             )
     return list(textures.values())

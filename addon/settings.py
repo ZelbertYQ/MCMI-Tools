@@ -315,6 +315,12 @@ class MCMI_Settings(bpy.types.PropertyGroup):
         default=True,
     ) # type: ignore
 
+    update_textures: BoolProperty(
+        name="Update Textures",
+        description="Update texture override sections in mod.ini",
+        default=True,
+    ) # type: ignore
+
     write_ini: BoolProperty(
         name="Write Mod INI",
         description="Write new .ini to export folder",

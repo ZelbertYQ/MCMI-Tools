@@ -244,14 +244,14 @@ endif
 
 {%- for texture in textures %}
 
-[ResourceTexture{{ loop.index0 }}]
+[ResourceTexture-{{ texture.hash }}]
 filename = Textures/{{ texture.filename }}
 
-[TextureOverrideTexture{{ loop.index0 }}]
+[TextureOverrideTexture-{{ texture.hash }}]
 hash = {{ texture.hash }}
 match_priority = 0
 if $object_detected
-    this = ResourceTexture{{ loop.index0 }}
+    this = ResourceTexture-{{ texture.hash }}
 endif
 {%- endfor %}
 

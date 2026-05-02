@@ -482,7 +482,7 @@ def patch_texture_override_conditions(lines):
         stripped = line.strip()
         stripped_lower = stripped.lower()
         if stripped.startswith('[') and stripped.endswith(']'):
-            in_texture_override = re.fullmatch(r'\[textureoverridetexture\d+\]', stripped_lower) is not None
+            in_texture_override = re.fullmatch(r'\[textureoverridetexture(-[a-f0-9]{8}|\d+)\]', stripped_lower) is not None
             continue
         if in_texture_override and stripped_lower == 'if $object_detected':
             result[i] = line.replace('if $object_detected', 'if $object_detected || $LOD >= 1')
@@ -520,8 +520,10 @@ def dedupe_lod_textures_and_ini(mod_folder, lod_hashes):
     if os.path.isdir(textures_dir):
         for filename in os.listdir(textures_dir):
             lower = filename.lower()
-            found = re.findall(r'.*t=([a-f0-9]{8}).*', lower)
-            if len(found) == 1 and found[0] in lod_hashes:
+            hash_match = re.search(r't=([a-f0-9]{8})', lower)
+            if hash_match is None:
+                hash_match = re.match(r'^([a-f0-9]{8})\.[a-z0-9]+$', lower)
+            if hash_match is not None and hash_match.group(1) in lod_hashes:
                 try:
                     os.remove(os.path.join(textures_dir, filename))
                 except Exception:
@@ -534,10 +536,16 @@ def dedupe_lod_textures_and_ini(mod_folder, lod_hashes):
     preamble, sections = split_ini_sections(lines)
 
     duplicate_texture_indices = set()
+    duplicate_texture_hashes = set()
     for header, section in sections:
         header_lower = header.lower()
-        match_header = re.fullmatch(r'\[textureoverridetexture(\d+)\]', header_lower)
+        match_header = re.fullmatch(r'\[textureoverridetexture(-[a-f0-9]{8}|\d+)\]', header_lower)
         if match_header is None:
+            continue
+        header_key = match_header.group(1)
+        header_hash = header_key[1:] if header_key.startswith('-') else None
+        if header_hash is not None and header_hash in lod_hashes:
+            duplicate_texture_hashes.add(header_hash)
             continue
         hash_value = None
         for line in section:
@@ -546,20 +554,27 @@ def dedupe_lod_textures_and_ini(mod_folder, lod_hashes):
                 hash_value = match_hash[0]
                 break
         if hash_value is not None and hash_value in lod_hashes:
-            duplicate_texture_indices.add(match_header.group(1))
+            if header_hash is not None:
+                duplicate_texture_hashes.add(header_hash)
+            else:
+                duplicate_texture_indices.add(header_key)
 
     filtered = list(preamble)
     for header, section in sections:
         header_lower = header.lower()
-        texture_resource_match = re.fullmatch(r'\[resourcetexture(\d+)\]', header_lower)
-        texture_override_match = re.fullmatch(r'\[textureoverridetexture(\d+)\]', header_lower)
-        texture_idx = None
+        texture_resource_match = re.fullmatch(r'\[resourcetexture(-[a-f0-9]{8}|\d+)\]', header_lower)
+        texture_override_match = re.fullmatch(r'\[textureoverridetexture(-[a-f0-9]{8}|\d+)\]', header_lower)
+        texture_key = None
         if texture_resource_match is not None:
-            texture_idx = texture_resource_match.group(1)
+            texture_key = texture_resource_match.group(1)
         elif texture_override_match is not None:
-            texture_idx = texture_override_match.group(1)
-        if texture_idx is not None and texture_idx in duplicate_texture_indices:
-            continue
+            texture_key = texture_override_match.group(1)
+        if texture_key is not None:
+            if texture_key.startswith('-'):
+                if texture_key[1:] in duplicate_texture_hashes:
+                    continue
+            elif texture_key in duplicate_texture_indices:
+                continue
         filtered.extend(section)
     with open(ini_path, 'w', encoding='utf-8') as f:
         f.writelines(filtered)
@@ -835,7 +850,9 @@ class MCMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
 
             layout.row().prop(cfg, 'mirror_mesh', text=tr('mirror_mesh'))
             layout.row().prop(cfg, 'apply_all_modifiers', text=tr('apply_all_modifiers'))
-            layout.row().prop(cfg, 'copy_textures', text=tr('copy_textures'))
+            row = layout.row(align=True)
+            row.prop(cfg, 'copy_textures', text=tr('copy_textures'))
+            row.prop(cfg, 'update_textures', text=tr('update_textures'))
 
             col = layout.column(align=True)
             grid = col.grid_flow(columns=2, align=True)
