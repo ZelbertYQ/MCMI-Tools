@@ -65,6 +65,9 @@ class ObjectImporter:
             candidates = list(object_source_folder.glob(f'*t={texture_hash}.*'))
             if len(candidates) > 0:
                 return candidates[0]
+            candidates = list(object_source_folder.glob(f'{texture_hash}.*'))
+            if len(candidates) > 0:
+                return candidates[0]
 
         return None
 

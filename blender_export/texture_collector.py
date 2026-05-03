@@ -22,11 +22,15 @@ def get_textures(object_source_folder: Path, exclude_hashes: List[str]):
             result = hash_pattern.findall(texture_filename.lower())
             
             if len(result) != 1:
-                # Handle old format
-                hash_pattern = re.compile(r'.*component_\d-ps-t\d-([a-f0-9]{8}).*')
+                # Handle hash-only format
+                hash_pattern = re.compile(r'^([a-f0-9]{8})\.[a-z0-9]+$')
                 result = hash_pattern.findall(texture_filename.lower())
                 if len(result) != 1:
-                    continue
+                    # Handle old format
+                    hash_pattern = re.compile(r'.*component_\d-ps-t\d-([a-f0-9]{8}).*')
+                    result = hash_pattern.findall(texture_filename.lower())
+                    if len(result) != 1:
+                        continue
 
             texture_hash = result[0]
 

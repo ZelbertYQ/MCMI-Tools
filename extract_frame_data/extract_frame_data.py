@@ -509,8 +509,7 @@ def write_objects(output_directory, objects: Dict[str, ObjectData], allow_missin
 
         for texture_hash, texture in textures.items():
             path = Path(texture['path'])
-            components = '-'.join(sorted(list(set(texture['components']))))
-            output_texture_filename = f'Components-{components} t={texture_hash}{path.suffix}'
+            output_texture_filename = f'{texture_hash}{path.suffix}'
             shutil.copyfile(path, object_directory / output_texture_filename)
             texture_hash_l = texture_hash.lower()
             deduped_info = deduped_texture_info.get(texture_hash_l, {})

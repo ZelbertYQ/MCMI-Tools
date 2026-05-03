@@ -346,12 +346,15 @@ def parse_texture_hashes_from_folder(folder_path):
     if not os.path.isdir(folder_path):
         return result
     pattern_new = re.compile(r'.*t=([a-f0-9]{8}).*')
+    pattern_hash = re.compile(r'^([a-f0-9]{8})\.[a-z0-9]+$')
     pattern_old = re.compile(r'.*component_\d-ps-t\d-([a-f0-9]{8}).*')
     for filename in os.listdir(folder_path):
         lower = filename.lower()
         if not (lower.endswith('.dds') or lower.endswith('.jpg')):
             continue
         found = pattern_new.findall(lower)
+        if len(found) != 1:
+            found = pattern_hash.findall(lower)
         if len(found) != 1:
             found = pattern_old.findall(lower)
         if len(found) == 1:
