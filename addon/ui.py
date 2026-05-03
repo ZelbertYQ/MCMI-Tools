@@ -63,6 +63,10 @@ def reverse_folder_available():
     return (addon_root / 'Reverse').is_dir()
 
 
+def is_effective_merged_skeleton(mode: str) -> bool:
+    return mode in ['MERGED', 'COMPONENT_TO_MERGED']
+
+
 def get_reverse_tools():
     if not reverse_folder_available():
         return None
@@ -1022,7 +1026,7 @@ class MCMI_TOOLS_PT_SidePanelAdvancedExport(bpy.types.Panel):
             layout.row().prop(cfg, 'skip_known_cubemap_textures', text=tr('skip_known_cubemap_textures'))
             layout.row().prop(cfg, 'add_missing_vertex_groups', text=tr('add_missing_vertex_groups'))
             layout.row().prop(cfg, 'unrestricted_custom_shape_keys', text=tr('unrestricted_custom_shape_keys'))
-            if cfg.mod_skeleton_type == 'MERGED':
+            if is_effective_merged_skeleton(cfg.mod_skeleton_type):
                 layout.row().prop(cfg, 'skeleton_scale', text=tr('skeleton_scale'))
 
         layout.row().prop(cfg, 'partial_export', text=tr('partial_export'))
@@ -1365,7 +1369,7 @@ class MCMI_Export(bpy.types.Operator):
                                 context,
                                 temp_collection,
                                 source_folder,
-                                merged_mode=(cfg.mod_skeleton_type == 'MERGED')
+                                merged_mode=is_effective_merged_skeleton(cfg.mod_skeleton_type)
                             )
 
                             cfg.component_collection = temp_collection
@@ -1380,7 +1384,7 @@ class MCMI_Export(bpy.types.Operator):
                                     temp_collection,
                                     lod_name,
                                     lod_map=lod_map,
-                                    merged_mode=(cfg.mod_skeleton_type == 'MERGED')
+                                    merged_mode=is_effective_merged_skeleton(cfg.mod_skeleton_type)
                                 )
 
                             dedupe_lod_textures_and_ini(cfg.mod_output_folder, lod0_hashes)

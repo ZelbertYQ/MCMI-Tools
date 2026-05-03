@@ -1,7 +1,7 @@
 import re
 import bpy
 
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Tuple, Optional, Set
 from dataclasses import dataclass, field
 from enum import Enum
 from textwrap import dedent
@@ -20,6 +20,11 @@ from ..extract_frame_data.metadata_format import ExtractedObject
 class SkeletonType(Enum):
     Merged = 'Merged'
     PerComponent = 'Per-Component'
+
+
+class VgRemapMode(Enum):
+    MergedToComponent = 'MERGED_TO_COMPONENT'
+    ComponentToMerged = 'COMPONENT_TO_MERGED'
 
 
 @dataclass
@@ -85,11 +90,147 @@ class ObjectMerger:
     apply_modifiers: bool
     collection: str
     skeleton_type: SkeletonType
+    vg_remap_mode: Optional[VgRemapMode] = None
     mesh_scale: float = 1.0
     mesh_rotation: Tuple[float] = (0.0, 0.0, 0.0)
     add_missing_vertex_groups: bool = False
     # Output
     merged_object: MergedObject = field(init=False)
+
+    @staticmethod
+    def _parse_vg_id(name: str, fallback: int) -> int:
+        match = re.match(r'^\s*(\d+)', name or '')
+        if match:
+            return int(match.group(1))
+        return fallback
+
+    @classmethod
+    def _get_vg_id(cls, vg: bpy.types.VertexGroup) -> int:
+        return cls._parse_vg_id(vg.name, vg.index)
+
+    @classmethod
+    def _collect_used_vg_ids(cls, obj: bpy.types.Object) -> Set[int]:
+        used = set()
+        for vertex in obj.data.vertices:
+            for group in vertex.groups:
+                if group.weight <= 0:
+                    continue
+                vg = obj.vertex_groups[group.group]
+                used.add(cls._get_vg_id(vg))
+        return used
+
+    @staticmethod
+    def _normalize_vg_map(raw_map: Dict) -> Dict[int, int]:
+        result = {}
+        if not isinstance(raw_map, dict):
+            return result
+        for key, value in raw_map.items():
+            if isinstance(key, str) and key.isdigit():
+                key = int(key)
+            if isinstance(value, str) and value.isdigit():
+                value = int(value)
+            if isinstance(key, int) and isinstance(value, int):
+                result[key] = value
+        return result
+
+    @classmethod
+    def _invert_vg_map(cls, vg_map: Dict[int, int], component_id: int) -> Dict[int, int]:
+        inverse = {}
+        duplicates = {}
+        for local_id, global_id in vg_map.items():
+            if global_id in inverse and inverse[global_id] != local_id:
+                duplicates.setdefault(global_id, set()).update([inverse[global_id], local_id])
+                continue
+            inverse[global_id] = local_id
+        if duplicates:
+            dup_lines = []
+            for global_id, locals_set in sorted(duplicates.items()):
+                locals_list = ', '.join(str(v) for v in sorted(locals_set))
+                dup_lines.append(f'Global {global_id} -> locals {locals_list}')
+            raise ConfigError(
+                'component_collection',
+                'Component {0} has duplicate global VG ids in Metadata.json:\n{1}'.format(
+                    component_id, '\n'.join(dup_lines)
+                )
+            )
+        return inverse
+
+    @classmethod
+    def _find_vg_by_id(cls, obj: bpy.types.Object, vg_id: int) -> Optional[bpy.types.VertexGroup]:
+        target_name = str(vg_id)
+        vg = obj.vertex_groups.get(target_name)
+        if vg is not None:
+            return vg
+        for candidate in obj.vertex_groups:
+            if cls._get_vg_id(candidate) == vg_id:
+                return candidate
+        return None
+
+    @classmethod
+    def _get_or_create_vg(cls, obj: bpy.types.Object, vg_id: int) -> bpy.types.VertexGroup:
+        vg = obj.vertex_groups.get(str(vg_id))
+        if vg is None:
+            vg = obj.vertex_groups.new(name=str(vg_id))
+        return vg
+
+    @classmethod
+    def _remap_vertex_groups(cls, obj: bpy.types.Object, mapping: Dict[int, int], component_id: int, label: str):
+        used_ids = cls._collect_used_vg_ids(obj)
+        missing = [vg_id for vg_id in sorted(used_ids) if vg_id not in mapping]
+        if missing:
+            missing_str = ', '.join(str(vg_id) for vg_id in missing)
+            raise ConfigError(
+                'component_collection',
+                f'Component {component_id} has VG ids not found in {label} mapping: {missing_str}'
+            )
+
+        weights_by_target = {}
+        for vertex in obj.data.vertices:
+            for group in vertex.groups:
+                if group.weight <= 0:
+                    continue
+                src_group = obj.vertex_groups[group.group]
+                src_id = cls._get_vg_id(src_group)
+                if src_id not in mapping:
+                    continue
+                dst_id = mapping.get(src_id, src_id)
+                weights_by_target.setdefault(dst_id, []).append((vertex.index, group.weight))
+
+        target_ids = set(weights_by_target.keys())
+        if not target_ids:
+            return
+        max_target_id = max(target_ids)
+
+        for vg in list(obj.vertex_groups):
+            obj.vertex_groups.remove(vg)
+
+        for vg_id in range(max_target_id + 1):
+            obj.vertex_groups.new(name=str(vg_id))
+
+        for dst_id, weights in weights_by_target.items():
+            if dst_id < len(obj.vertex_groups):
+                dst_group = obj.vertex_groups[dst_id]
+                for vertex_index, weight in weights:
+                    dst_group.add([vertex_index], weight, 'ADD')
+
+    def _apply_merged_to_component_remap(self, obj: bpy.types.Object, component_id: int):
+        component_meta = self.extracted_object.components[component_id]
+        vg_map = self._normalize_vg_map(component_meta.vg_map)
+        inverse = self._invert_vg_map(vg_map, component_id)
+        self._remap_vertex_groups(obj, inverse, component_id, 'Merged->Per')
+
+    def _apply_component_to_merged_remap(self, obj: bpy.types.Object, component_id: int):
+        component_meta = self.extracted_object.components[component_id]
+        vg_map = self._normalize_vg_map(component_meta.vg_map)
+        self._remap_vertex_groups(obj, vg_map, component_id, 'Per->Merged')
+
+    @staticmethod
+    def _format_vg_conflicts(conflicts: Dict[int, Set[int]]) -> str:
+        lines = []
+        for vg_id, components in sorted(conflicts.items()):
+            comp_list = ', '.join(str(comp_id) for comp_id in sorted(components))
+            lines.append(f'{vg_id}: components {comp_list}')
+        return '\n'.join(lines)
 
     @staticmethod
     def _rename_layer_collection_sequential(layer_collection, name_builder, temp_prefix):
@@ -192,8 +333,8 @@ class ObjectMerger:
             raise ValueError(f'No eligible `Component` objects found!')
 
     def prepare_temp_objects(self):
-
         index_offset = 0
+        component_used_vg_ids = {}
 
         for component_id, component in enumerate(self.components):
 
@@ -223,6 +364,13 @@ class ObjectMerger:
                 # Normalize UV/Color layer names by slot order on temp objects only.
                 # This keeps export deterministic even if source layer names are arbitrary.
                 self.rename_temp_attribute_layers_by_slot(temp_obj)
+                if self.vg_remap_mode == VgRemapMode.MergedToComponent:
+                    used_ids = self._collect_used_vg_ids(temp_obj)
+                    if used_ids:
+                        component_used_vg_ids.setdefault(component_id, set()).update(used_ids)
+                    self._apply_merged_to_component_remap(temp_obj, component_id)
+                elif self.vg_remap_mode == VgRemapMode.ComponentToMerged:
+                    self._apply_component_to_merged_remap(temp_obj, component_id)
                 # Handle Vertex Groups
                 vertex_groups = get_vertex_groups(temp_obj)
                 # Fill gaps in Vertex Groups list based on VG names (i.e. add group '1' between '0' and '2' if it's missing)
@@ -237,7 +385,7 @@ class ObjectMerger:
                         if (
                             'ignore' in vg.name.lower()
                             or not vg.name.strip().isdigit()
-                            or vg.index >= total_vg_count
+                            or (self._get_vg_id(vg) if self.vg_remap_mode else vg.index) >= total_vg_count
                         )
                     ]
                 elif self.skeleton_type == SkeletonType.PerComponent:
@@ -249,7 +397,7 @@ class ObjectMerger:
                         if (
                             'ignore' in vg.name.lower()
                             or not vg.name.strip().isdigit()
-                            or vg.index >= total_vg_count
+                            or (self._get_vg_id(vg) if self.vg_remap_mode else vg.index) >= total_vg_count
                         )
                     ]
                 remove_vertex_groups(temp_obj, ignore_list)
@@ -267,6 +415,16 @@ class ObjectMerger:
                 # Update vertex and index count of custom component
                 component.vertex_count += temp_object.vertex_count
                 component.index_count += temp_object.index_count
+
+        if self.vg_remap_mode == VgRemapMode.MergedToComponent and component_used_vg_ids:
+            conflicts = {}
+            for component_id, used_ids in component_used_vg_ids.items():
+                for vg_id in used_ids:
+                    conflicts.setdefault(vg_id, set()).add(component_id)
+            conflicts = {vg_id: comps for vg_id, comps in conflicts.items() if len(comps) > 1}
+            if conflicts:
+                conflict_text = self._format_vg_conflicts(conflicts)
+                print('Warning: Merged->Per shared VG ids across components:\n' + conflict_text)
 
     def remove_temp_objects(self):
         for component_id, component in enumerate(self.components):

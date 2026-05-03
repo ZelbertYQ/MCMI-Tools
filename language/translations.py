@@ -152,6 +152,8 @@ TRANSLATIONS = {
         # --- Enum: skeleton ---
         'skeleton_merged':                  "Merged",
         'skeleton_component':               "Per-Component",
+        'skeleton_merged_to_component':     "Merged -> Per-Component",
+        'skeleton_component_to_merged':     "Per-Component -> Merged",
         # --- Enum: color storage ---
         'color_linear':                     "Linear",
         'color_srgb_legacy':                "sRGB (legacy)",
@@ -312,6 +314,8 @@ TRANSLATIONS = {
         # --- Enum: skeleton ---
         'skeleton_merged':                  "合并型",
         'skeleton_component':               "逐组件型",
+        'skeleton_merged_to_component':     "合并转逐组件",
+        'skeleton_component_to_merged':     "逐组件转合并",
         # --- Enum: color storage ---
         'color_linear':                     "线性",
         'color_srgb_legacy':                "sRGB（旧版）",

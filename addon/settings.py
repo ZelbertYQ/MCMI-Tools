@@ -47,6 +47,8 @@ def _export_skeleton_items(self, context):
     r = [
         ('MERGED', tr('skeleton_merged'), 'Mesh with this skeleton should have unified list of Vertex Groups'),
         ('COMPONENT', tr('skeleton_component'), 'Mesh with this skeleton should have its Vertex Groups split into per-component lists.'),
+        ('MERGED_TO_COMPONENT', tr('skeleton_merged_to_component'), 'Convert merged Vertex Groups to per-component ids on export.'),
+        ('COMPONENT_TO_MERGED', tr('skeleton_component_to_merged'), 'Convert per-component Vertex Groups to merged ids on export.'),
     ]
     _export_skeleton_items._r = r
     return r

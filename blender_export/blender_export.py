@@ -15,7 +15,7 @@ from ..migoto_io.data_model.data_model import DataModel
 
 from ..extract_frame_data.metadata_format import read_metadata, ExtractedObject
 
-from .object_merger import ObjectMerger, SkeletonType, MergedObject, MergedObjectShapeKeysBatch
+from .object_merger import ObjectMerger, SkeletonType, VgRemapMode, MergedObject, MergedObjectShapeKeysBatch
 from .metadata_collector import Version, ModInfo
 from .texture_collector import Texture, get_textures
 from .ini_maker import IniMaker
@@ -115,8 +115,21 @@ class ModExporter:
         if self.cfg.component_collection not in list(get_scene_collections()):
             raise ConfigError('component_collection', f'Collection "{self.cfg.component_collection.name}" is not a member of "Scene Collection"!')
 
+    def resolve_export_skeleton(self):
+        mode = self.cfg.mod_skeleton_type
+        if mode == 'MERGED':
+            return SkeletonType.Merged, None
+        if mode == 'COMPONENT':
+            return SkeletonType.PerComponent, None
+        if mode == 'MERGED_TO_COMPONENT':
+            return SkeletonType.PerComponent, VgRemapMode.MergedToComponent
+        if mode == 'COMPONENT_TO_MERGED':
+            return SkeletonType.Merged, VgRemapMode.ComponentToMerged
+        raise ValueError(f'Unknown skeleton type {mode}!')
+
     def build_merged_object(self):
         start_time = time.time()
+        skeleton_type, vg_remap_mode = self.resolve_export_skeleton()
         object_merger = ObjectMerger(
             extracted_object=self.extracted_object,
             ignore_nested_collections=self.cfg.ignore_nested_collections,
@@ -126,7 +139,8 @@ class ModExporter:
             apply_modifiers=self.cfg.apply_all_modifiers,
             context=self.context,
             collection=self.cfg.component_collection,
-            skeleton_type=SkeletonType.Merged if self.cfg.mod_skeleton_type == 'MERGED' else SkeletonType.PerComponent,
+            skeleton_type=skeleton_type,
+            vg_remap_mode=vg_remap_mode,
             mesh_scale=0.01,
             mesh_rotation=(0, 0, 180),
             add_missing_vertex_groups=self.cfg.add_missing_vertex_groups,

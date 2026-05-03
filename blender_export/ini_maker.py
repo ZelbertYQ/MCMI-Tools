@@ -100,9 +100,9 @@ class IniMaker:
 
         default_templates_path = Path(os.path.realpath(__file__)).parent.parent / 'templates'
 
-        if cfg.mod_skeleton_type == 'MERGED':
+        if cfg.mod_skeleton_type in ['MERGED', 'COMPONENT_TO_MERGED']:
             default_template_path = default_templates_path / 'merged.ini.j2'
-        elif cfg.mod_skeleton_type == 'COMPONENT':
+        elif cfg.mod_skeleton_type in ['COMPONENT', 'MERGED_TO_COMPONENT']:
             default_template_path = default_templates_path / 'per_component.ini.j2'
         else:
             raise ValueError(f'Unknown skeleton type {cfg.mod_skeleton_type}!')
