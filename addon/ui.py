@@ -2,6 +2,7 @@ import subprocess
 import json
 import re
 import os
+from pathlib import Path
 import bpy
 
 from textwrap import dedent
@@ -55,6 +56,21 @@ def parse_component_id(name):
     if len(result) == 0:
         return None
     return int(result[0])
+
+
+def reverse_folder_available():
+    addon_root = Path(__file__).resolve().parents[1]
+    return (addon_root / 'Reverse').is_dir()
+
+
+def get_reverse_tools():
+    if not reverse_folder_available():
+        return None
+    try:
+        from ..Reverse import reverse_tools
+    except Exception:
+        return None
+    return reverse_tools
 
 
 def get_collection_component_meshes(collection):
@@ -907,6 +923,20 @@ class MCMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
         
         layout.row()
 
+        reverse_enabled = reverse_folder_available()
+        if reverse_enabled:
+            layout.row().prop(cfg, 'extract_source_mode', text=tr('extract_source_mode'))
+
+        if reverse_enabled and cfg.extract_source_mode == 'MOD_FOLDER':
+            row = add_row_with_error_handler(layout, cfg, 'reverse_mod_folder')
+            row.prop(cfg, 'reverse_mod_folder', text=tr('reverse_mod_folder'))
+
+            row = add_row_with_error_handler(layout, cfg, 'extract_output_folder')
+            row.prop(cfg, 'extract_output_folder', text=tr('extract_output_folder'))
+
+            layout.row().operator(MCMI_ExtractMod.bl_idname, text=tr('extract_mod_object'))
+            return
+
         row = add_row_with_error_handler(layout, cfg, 'frame_dump_folder')
         row.prop(cfg, 'frame_dump_folder', text=tr('frame_dump_folder'))
 
@@ -1157,6 +1187,17 @@ class MCMI_Import(bpy.types.Operator):
 
             cfg.mod_skeleton_type = cfg.import_skeleton_type
 
+            reverse_tools = get_reverse_tools()
+            if reverse_tools is not None and reverse_tools.is_mod_folder(cfg.object_source_folder):
+                original_source = cfg.object_source_folder
+                try:
+                    temp_folder = reverse_tools.reverse_mod_extract_to_temp(cfg.object_source_folder)
+                    cfg.object_source_folder = str(temp_folder)
+                    blender_import(self, context, cfg)
+                finally:
+                    cfg.object_source_folder = original_source
+                return {'FINISHED'}
+
             if not cfg.enable_lod_mode:
                 blender_import(self, context, cfg)
             else:
@@ -1405,6 +1446,32 @@ class MCMI_ExtractFrameData(bpy.types.Operator):
             else:
                 raise
             
+        return {'FINISHED'}
+
+
+class MCMI_ExtractMod(bpy.types.Operator):
+    """
+    Extract object sources from an existing mod folder
+    """
+    bl_idname = "mcmi_tools.extract_mod"
+    bl_label = "Extract Objects From Mod"
+    bl_description = "Extract object sources from mod folder"
+
+    def execute(self, context):
+        try:
+            cfg = context.scene.mcmi_tools_settings
+
+            clear_error(cfg)
+
+            reverse_tools = get_reverse_tools()
+            if reverse_tools is None:
+                raise ConfigError('reverse_mod_folder', 'Reverse tools are not available. Create a Reverse folder to enable this feature.')
+
+            reverse_tools.reverse_mod_extract(cfg.reverse_mod_folder, cfg.extract_output_folder)
+
+        except ConfigError as e:
+            self.report({'ERROR'}, str(e))
+
         return {'FINISHED'}
 
 

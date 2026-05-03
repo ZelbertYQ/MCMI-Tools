@@ -1,5 +1,6 @@
 import bpy
 import json
+from pathlib import Path
 
 from bpy.props import BoolProperty, StringProperty, PointerProperty, IntProperty, FloatProperty, CollectionProperty
 
@@ -88,6 +89,21 @@ def _lod_map_profile_items(self, context):
     return r
 
 
+def _reverse_folder_available():
+    addon_root = Path(__file__).resolve().parents[1]
+    return (addon_root / 'Reverse').is_dir()
+
+
+def _extract_source_mode_items(self, context):
+    r = [
+        ('FRAME_DUMP', tr('extract_source_frame_dump'), 'Extract objects from frame dump folder'),
+    ]
+    if _reverse_folder_available():
+        r.append(('MOD_FOLDER', tr('extract_source_mod_folder'), 'Extract objects from mod folder'))
+    _extract_source_mode_items._r = r
+    return r
+
+
 class MCMI_Settings(bpy.types.PropertyGroup):
 
     def on_update_clear_error(self, property_name):
@@ -144,12 +160,27 @@ class MCMI_Settings(bpy.types.PropertyGroup):
     # Extract Frame Data
     ########################################
 
+    extract_source_mode: bpy.props.EnumProperty(
+        name="Extract Source",
+        description="Choose extraction source type",
+        items=_extract_source_mode_items,
+        default=0,
+    ) # type: ignore
+
     frame_dump_folder: StringProperty(
         name="Frame Dump",
         description="Frame dump files directory",
         default='',
         subtype="DIR_PATH",
         update=lambda self, context: self.on_update_clear_error('frame_dump_folder'),
+    ) # type: ignore
+
+    reverse_mod_folder: StringProperty(
+        name="Mod Folder",
+        description="Mod folder containing mod.ini and Meshes",
+        default='',
+        subtype="DIR_PATH",
+        update=lambda self, context: self.on_update_clear_error('reverse_mod_folder'),
     ) # type: ignore
 
     skip_small_textures: BoolProperty(
