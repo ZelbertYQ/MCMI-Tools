@@ -1,31 +1,141 @@
-# MCMI-Tools
+# MCMI Tools
 
-本项目是 [WWMI-Tools](https://github.com/SpectrumQT/WWMI-Tools) 的修改版，旨在提供更实用的功能与改进。
+MCMI Tools is a modified version of [WWMI Tools](https://github.com/SpectrumQT/WWMI-Tools) for Wuthering Waves modding. It keeps the original import, export, extraction and template workflows, and adds practical improvements for Chinese users, LOD workflows, texture replacement and recent WWMI frame-dump changes.
 
-## 中文说明
+Current version: `1.7.3.15`
 
-### 功能清单
+## Installation
 
-1. **双语切换**：添加中文支持。
-2. **LOD 模式**：分别提取三次 LOD 转储文件夹（两次也可以），选定路径后导入一次，插件会自动完成顶点组映射；工程中只需要一份集合，导出一次即可自动导出三个 LOD MOD。
-3. **指定提取**：在指定哈希栏中选定 Numpad 7/8 轮询的 IB，按 9 复制过来，即可只提取它；避免复杂场景中提取不需要的角色。
-4. **不更新贴图**：不勾选更新贴图，导出时不会覆盖「Shading: Textures」部分。
-5. **收集提取资源**：勾选后，会在导出文件夹中创建额外文件夹，收集这次提取用到的资源，甚至可以用这个文件夹再提取一遍。
-6. **贴图替换重命名**：导出的贴图文件夹重命名为纯 hash 格式，对多模态角色是很有用的底层变动。
-7. **移入/移除着色过滤**：在指定 hash 栏中填入贴图 hash，移入过滤后，以后提取便不会再放进去了；主要用于过滤面部 SDF 贴图和一些不需要但高频的贴图。
-8. **COLOR1toTEXCOORD1**：部分角色的 COLOR1 语义被错误地用来存储 UV 数据，现在无论是读取SQT的，还是我的，在导入和导出时都会是4UV+1COLOR
+1. Download the source zip from the latest GitHub Release.
+2. In Blender, open `Edit > Preferences > Add-ons > Install...`.
+3. Select the downloaded zip and enable `MCMI Tools`.
+4. Open the sidebar tab `MCMI Tools`.
 
-## English
+If you already installed an older build, restart Blender after updating. The built-in updater checks GitHub Releases.
 
-This project is a modified version of [WWMI-Tools](https://github.com/SpectrumQT/WWMI-Tools), focused on practical features and improvements.
+## Main Changes From WWMI Tools
 
-### Feature List
+### Chinese and English UI
 
-1. **Bilingual UI**: Chinese language support.
-2. **LOD Mode**: Extract LOD dumps three times (two is also fine), import once, and the add-on auto-builds vertex-group mappings. One collection is enough; a single export outputs three LOD MODs.
-3. **Targeted Extraction**: Pick the IB cycled by Numpad 7/8 in the hash field, press 9 to paste it, and extract only that target. This avoids pulling unwanted characters in complex scenes.
-4. **Do Not Update Textures**: When disabled, exporting will not overwrite the "Shading: Textures" section.
-5. **Collect Extracted Resources**: When enabled, an extra folder is created in the output directory to collect resources used during extraction; you can even re-extract from it.
-6. **Texture Rename for Replacement**: Exported textures are renamed to pure hash format, which is very useful for multi-modal characters.
-7. **Add/Remove Shading Filter**: Fill in a texture hash and add it to the filter to exclude it from future extraction; mainly for face SDF textures and other high-frequency but unnecessary textures.# MCMI-Tools
-8. **COLOR1toTEXCOORD1**: For some characters, the COLOR1 semantic was incorrectly used to store UV data. Now, whether it's reading SQT's or mine, it will be 4UV+1COLOR during import and export.
+The add-on panel and most common actions support Chinese and English labels. Change language from the add-on preferences.
+
+Note: the default language is Chinese.
+
+### LOD Import and Export
+
+MCMI Tools can import LOD0, LOD1 and LOD2 object sources together and generate vertex-group mapping tables.
+
+Basic workflow:
+
+1. Enable `LOD`.
+2. Set `Object Sources` to the LOD0 extracted folder.
+3. Optionally set `LOD1 Sources` and `LOD2 Sources`.
+4. Click `Import Object`.
+5. Edit the LOD0 collection as usual.
+6. Click `Export Mod`; the add-on exports LOD0 plus `LOD1` and `LOD2` subfolders when source folders are provided.
+
+Notes:
+
+- The mapping is generated from vertex-group centers and stored in the Blender text block `MCMI_LodMaps`.
+- You can open and edit the mapping table from the LOD map editor before export.
+- For merged skeleton workflows, the add-on temporarily duplicates and merges collections to calculate mappings.
+- LOD export patches the main `mod.ini` so shared texture overrides can still work when LOD1/LOD2 objects are active.
+
+### Targeted Frame-Dump Extraction
+
+Use `Assign Hash` to extract only the object matching a specific IB hash. This is useful in crowded scenes where multiple compatible objects appear in the same frame dump.
+
+Typical use:
+
+1. In hunting mode, cycle the target IB hash.
+2. Paste the 8-character hash into `Assign Hash`.
+3. Run `Extract Frame Data`.
+
+Leave `Assign Hash` empty to extract all compatible objects.
+
+### Automatic Diffuse Texture Matching
+
+The importer can connect a likely diffuse texture to each component automatically. This version no longer relies only on old slot and size assumptions.
+
+Current matching behavior:
+
+- candidate textures are filtered by SRGB format, square dimensions, and accepted sizes `1024x1024` or `2048x2048`;
+- candidates are grouped by frame-analysis metadata from `TextureFormat.json`;
+- if usage data is incomplete, component metadata is used as a fallback;
+- UV islands are sampled on a fixed grid;
+- candidate scores are based on RGB variance, weighted by each UV island's actual sample count;
+- a global de-duplication pass avoids assigning the same texture to multiple components when another valid candidate exists;
+- likely outline textures can be removed from later component selection;
+- a diagnostic `DiffuseTextureMatch.log` is written beside the imported object sources.
+
+Notes:
+
+- The log is for debugging and is not needed in exported mods.
+- The matcher is heuristic. If a character uses unusual material layouts, check `DiffuseTextureMatch.log` before assuming the selected texture is correct.
+- Texture hashes added to the shading filter are excluded from automatic diffuse matching.
+
+### Texture Hash Identity and Subfolders
+
+Texture identity is based on the 8-character hash in the filename. The importer recursively searches `.dds`, `.png`, `.jpg` and `.jpeg` files under the object source folder.
+
+Supported examples:
+
+```text
+9ac598b5.dds
+C1-Diffuse-9ac598b5.dds
+Textures/Body/C1-Diffuse-9ac598b5.dds
+```
+
+If multiple files contain the same hash, one is selected deterministically.
+
+Export behavior:
+
+- texture files are copied while preserving the imported relative subfolder and filename;
+- generated extracted texture names remain pure hash names;
+- `mod.ini` texture references keep the exported relative path.
+
+### Texture Section Preservation
+
+`Update Textures` controls whether export rewrites the generated `Shading: Textures` section in `mod.ini`.
+
+Disable it when you manually edited texture overrides and only want to update mesh buffers or other generated sections.
+
+### Extracted Resource Collection
+
+Enable `Collect Extracted Resources` in debug settings to copy raw frame-dump resources used by the extracted object into an `ExtractResources` folder.
+
+If extraction fails, resources are saved under `ExtractError/ExtractResources` when possible. This is intended for debugging and sharing a minimal repro.
+
+### COLOR1 / TEXCOORD1 Handling
+
+Some WWMI data stores UV-like data in `COLOR1`. MCMI Tools adjusts import and export handling so these layouts round-trip as `4UV + 1COLOR` where appropriate.
+
+Use the toolbox action `Convert Vertex Colors` when working with older Blender files that still store color data in legacy vertex color layers.
+
+### Optional Reverse Mod Extraction
+
+If a `Reverse` folder with reverse tools exists beside the add-on, an extra extraction source mode appears for extracting object sources from an existing mod folder.
+
+This helper is optional and not part of the core public release. Normal frame-dump extraction does not require it.
+
+## GitHub Release Workflow
+
+The add-on updater reads GitHub Releases from:
+
+```text
+https://github.com/ZelbertYQ/MCMI-Tools/releases
+```
+
+Version tags should match `bl_info["version"]`, for example:
+
+```text
+v1.7.3.15
+```
+
+The updater downloads GitHub's release source zip, so no separate update asset is required.
+
+## Credits
+
+Based on [WWMI Tools](https://github.com/SpectrumQT/WWMI-Tools).
+
+Original and continued credits: SpectrumQT, LeoTorreZ, SinsOfSeven, SilentNightSound, DarkStarSword, ZelbertYQ.

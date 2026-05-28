@@ -274,7 +274,8 @@ class ModExporter:
                     texture_path = self.textures_path / texture.filename
                     if texture_path.is_file():
                         continue
-                    print(f'Copying {texture_path.name}...')
+                    texture_path.parent.mkdir(parents=True, exist_ok=True)
+                    print(f'Copying {texture.filename}...')
                     shutil.copy(texture.path, texture_path)
             # Write mod logo
             mod_logo_path = resolve_path(self.cfg.mod_logo)

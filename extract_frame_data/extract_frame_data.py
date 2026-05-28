@@ -494,10 +494,24 @@ def write_objects(output_directory, objects: Dict[str, ObjectData], allow_missin
                 if texture.hash not in textures:
                     textures[texture.hash] = {
                         'path': texture.path,
-                        'components': []
+                        'components': [],
+                        'usage': []
                     }
 
                 textures[texture.hash]['components'].append(str(component_id))
+                textures[texture.hash]['usage'].append({
+                    'component': component_id,
+                    'call_id': int(texture.call_id) if texture.call_id is not None else None,
+                    'slot': texture.get_slot(),
+                    'slot_id': texture.slot_id,
+                    'shader_type': texture.slot_shader_type.value if texture.slot_shader_type is not None else '',
+                    'shaders': {
+                        shader.type.value: shader.hash
+                        for shader in texture.shaders
+                        if shader.type is not None
+                    },
+                    'file': texture.raw,
+                })
 
                 slot = texture.get_slot()
                 if slot not in texture_usage[component_filename]:
@@ -520,6 +534,11 @@ def write_objects(output_directory, objects: Dict[str, ObjectData], allow_missin
                 'source_formats': deduped_info.get('source_formats', []),
                 'size': [width, height] if width is not None and height is not None else [],
                 'components': texture_components,
+                'usage': sorted(texture.get('usage', []), key=lambda item: (
+                    item.get('component', -1),
+                    item.get('call_id') if item.get('call_id') is not None else -1,
+                    item.get('slot_id') if item.get('slot_id') is not None else -1,
+                )),
             }
             
         with open(object_directory / f'TextureUsage.json', "w") as f:

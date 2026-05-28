@@ -26,7 +26,7 @@ class ComponentData:
     fmt: str
     vb: bytearray
     ib: bytearray
-    textures: Dict[str, List[ResourceDescriptor]]
+    textures: List[ResourceDescriptor]
 
 
 @dataclass
@@ -75,23 +75,19 @@ class OutputBuilder:
             # '2e4e6aecbfdabc7b292a55e9dab133ed3d0192145b44f6ea72c19f9dbd2a9033',  # Eye mask
         ]
 
-        num_slot_hash_entries = {}
+        slot_hash_components = {}
 
-        for component in mesh_object.components:
+        for component_id, component in enumerate(mesh_object.components):
 
-            for texture in component.textures.values():
+            for texture in component.textures:
                 slot_hash = texture.get_slot_hash()
-
-                if slot_hash not in num_slot_hash_entries:
-                    num_slot_hash_entries[slot_hash] = 0
-
-                num_slot_hash_entries[slot_hash] += 1
+                slot_hash_components.setdefault(slot_hash, set()).add(component_id)
 
         for component in mesh_object.components:
 
             textures = []
 
-            for texture in component.textures.values():
+            for texture in component.textures:
 
                 # Exclude texture with ignored extension
                 if len(self.texture_filter.exclude_extensions) > 0:
@@ -114,7 +110,7 @@ class OutputBuilder:
                     num_components = len(mesh_object.components)
                     if num_components > 1:
                         slot_hash = texture.get_slot_hash()
-                        if num_slot_hash_entries[slot_hash] == num_components:
+                        if len(slot_hash_components.get(slot_hash, set())) == num_components:
                             continue
 
                 # Exclude known garbage textures

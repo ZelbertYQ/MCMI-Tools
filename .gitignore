@@ -1,9 +1,29 @@
-# 个人提示词文件，不推送到远程仓库
+# Python / Blender runtime files
+__pycache__/
+*.py[cod]
+*$py.class
 
-开发日程.md
-提示词.md
-形态键开发记录.md
+# Local updater state
+*_updater/*_updater_status.json
+*_updater/update_staging/
+*_updater/source/
+*_updater/backup/
+
+# Local logs and temporary outputs
+*.log
 Error.log
+DiffuseTextureMatch.log
+
+# Personal notes and local reference material
+提示词.md
+开发日程.md
+形态键开发记录.md
 SQT新版WWMIT与CORE形态键全链路解析.md
 RefCode/
 Reverse/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

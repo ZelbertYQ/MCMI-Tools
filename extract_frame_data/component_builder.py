@@ -30,7 +30,7 @@ class MeshComponent:
     index_buffer: IndexBuffer
     vertex_buffer: ByteBuffer
     skeleton_buffer: ByteBuffer
-    textures: Dict[str, List[ResourceDescriptor]]
+    textures: List[ResourceDescriptor]
 
 
 @dataclass()
@@ -153,10 +153,7 @@ class MeshObject:
             for face in draw_data.index_buffer.faces
         ]
 
-        textures = {}
-        for texture in draw_data.textures:
-            slot_hash = texture.get_slot_hash()
-            textures[slot_hash] = texture
+        textures = list(draw_data.textures)
 
         return MeshComponent(
             vb_hash=draw_data.vb_hash,
@@ -276,8 +273,6 @@ class ComponentBuilder:
 
     
     
-
-
 
 
 
