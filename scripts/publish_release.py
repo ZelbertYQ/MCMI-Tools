@@ -22,6 +22,8 @@ def run(args, check=True, capture=False):
         cwd=ROOT,
         check=False,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         stdout=subprocess.PIPE if capture else None,
         stderr=subprocess.PIPE if capture else None,
     )
@@ -78,6 +80,21 @@ def remote_tag_exists(tag):
     return bool(result.stdout.strip())
 
 
+def ref_value(ref):
+    result = run(["git", "rev-parse", "-q", "--verify", ref], check=False, capture=True)
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip()
+
+
+def remote_tag_value(tag):
+    result = run(["git", "ls-remote", "--tags", "origin", tag], check=False, capture=True)
+    if not result.stdout.strip():
+        return None
+    first_line = result.stdout.strip().splitlines()[0]
+    return first_line.split()[0]
+
+
 def release_exists(tag, token):
     request = urllib.request.Request(
         f"https://api.github.com/repos/{OWNER}/{REPO}/releases/tags/{tag}",
@@ -101,6 +118,26 @@ def github_headers(token):
     if token:
         headers["Authorization"] = f"Bearer {token}"
     return headers
+
+
+def token_from_git_credentials():
+    result = subprocess.run(
+        ["git", "credential", "fill"],
+        cwd=ROOT,
+        input="protocol=https\nhost=github.com\nusername=ZelbertYQ\n\n",
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if result.returncode != 0:
+        return ""
+    for line in result.stdout.splitlines():
+        if line.startswith("password="):
+            return line.split("=", 1)[1]
+    return ""
 
 
 def create_release_with_api(tag, title, notes, token, draft=False, prerelease=False):
@@ -170,10 +207,15 @@ def main():
         raise SystemExit("Release must be published from the main branch")
     if has_dirty_worktree() and not args.allow_dirty:
         raise SystemExit("Working tree is dirty. Commit changes first or pass --allow-dirty.")
-    if tag_exists(tag):
-        raise SystemExit(f"Local tag already exists: {tag}")
-    if remote_tag_exists(tag):
-        raise SystemExit(f"Remote tag already exists: {tag}")
+    head = ref_value("HEAD")
+    local_tag = ref_value(f"refs/tags/{tag}^{{}}")
+    remote_tag = remote_tag_value(tag)
+    local_tag_needs_create = local_tag is None
+    remote_tag_needs_push = remote_tag is None
+    if local_tag is not None and local_tag != head:
+        raise SystemExit(f"Local tag already exists on a different commit: {tag}")
+    if remote_tag is not None and remote_tag != head:
+        raise SystemExit(f"Remote tag already exists on a different commit: {tag}")
 
     notes = args.notes_file.read_text(encoding="utf-8") if args.notes_file else None
 
@@ -187,11 +229,13 @@ def main():
         return
 
     run(["git", "push", "origin", "main"])
-    run(["git", "tag", "-a", tag, "-m", title])
-    run(["git", "push", "origin", tag])
+    if local_tag_needs_create:
+        run(["git", "tag", "-a", tag, "-m", title])
+    if remote_tag_needs_push:
+        run(["git", "push", "origin", tag])
 
     notes = notes if notes is not None else build_notes(tag)
-    token = os.environ.get("GITHUB_TOKEN", "")
+    token = os.environ.get("GITHUB_TOKEN", "") or token_from_git_credentials()
     if release_exists(tag, token):
         print(f"GitHub Release already exists for {tag}")
         return
