@@ -105,6 +105,27 @@ class ObjectImporter:
                 result.add(value.lower())
         return result
 
+    def is_disabled_source_dir(self, path: Path):
+        return path.name.lower().startswith('disabled')
+
+    def is_in_disabled_source_dir(self, path: Path, root: Path):
+        try:
+            relative_path = path.relative_to(root)
+        except ValueError:
+            return False
+        return any(part.lower().startswith('disabled') for part in relative_path.parts[:-1])
+
+    def iter_enabled_files(self, root: Path):
+        for current_root, dirnames, filenames in os.walk(root):
+            dirnames[:] = [
+                dirname
+                for dirname in dirnames
+                if not dirname.lower().startswith('disabled')
+            ]
+            current_path = Path(current_root)
+            for filename in filenames:
+                yield current_path / filename
+
     def resolve_texture_path(self, object_source_folder: Path, texture_hash):
         texture_hash = texture_hash.lower()
         if texture_hash:
@@ -113,10 +134,19 @@ class ObjectImporter:
             if indexed_path is not None and indexed_path.is_file():
                 return indexed_path
 
-            candidates = sorted(object_source_folder.rglob(f'*t={texture_hash}.*'))
+            candidates = sorted([
+                texture_path
+                for texture_path in self.iter_enabled_files(object_source_folder)
+                if texture_path.name.lower().endswith(tuple(['.dds', '.jpg', '.jpeg', '.png']))
+                and f't={texture_hash}.' in texture_path.name.lower()
+            ])
             if len(candidates) > 0:
                 return candidates[0]
-            candidates = sorted(object_source_folder.rglob(f'{texture_hash}.*'))
+            candidates = sorted([
+                texture_path
+                for texture_path in self.iter_enabled_files(object_source_folder)
+                if texture_path.stem.lower() == texture_hash
+            ])
             if len(candidates) > 0:
                 return candidates[0]
 
@@ -130,7 +160,7 @@ class ObjectImporter:
 
         texture_index = {}
         hash_pattern = re.compile(r'(?<![a-fA-F0-9])([a-fA-F0-9]{8})(?![a-fA-F0-9])')
-        for texture_path in sorted(object_source_folder.rglob('*')):
+        for texture_path in sorted(self.iter_enabled_files(object_source_folder)):
             if not texture_path.is_file():
                 continue
             if texture_path.suffix.lower() not in {'.dds', '.jpg', '.jpeg', '.png'}:
@@ -309,6 +339,8 @@ class ObjectImporter:
         if texture_path is None:
             texture_file = file_by_hash.get(texture_hash, '')
             texture_path = object_source_folder / texture_file if texture_file else None
+            if texture_path is not None and self.is_in_disabled_source_dir(texture_path, object_source_folder):
+                texture_path = None
         if texture_path is not None and Path(texture_path).is_file():
             return texture_path
         return None

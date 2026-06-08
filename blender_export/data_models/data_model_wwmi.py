@@ -164,7 +164,7 @@ class DataModelWWMI(DataModel):
             print(f'Skipped shapekeys fetching!')
             return {}
 
-        shapekey_pattern = re.compile(r'.*(?:deform|custom)[_ -]*(\d+).*')
+        shapekey_pattern = re.compile(r'^(?:deform|custom)[_ -]*(\d+).*')
         shapekey_ids = {}
         
         for shapekey in obj.data.shape_keys.key_blocks:
@@ -173,6 +173,10 @@ class DataModelWWMI(DataModel):
                 continue
             shapekey_id = int(match[0])
             shapekey_ids[shapekey_id] = shapekey.name
+
+        if len(shapekey_ids) == 0:
+            print(f'No supported shapekeys found to process!')
+            return {}
 
         shapekeys = self.data_extractor.get_shapekey_data(obj, names_filter=list(shapekey_ids.values()), deduct_basis=True)
 
