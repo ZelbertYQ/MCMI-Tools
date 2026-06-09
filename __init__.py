@@ -25,7 +25,8 @@ from .addon import settings
 
 
 def trigger_mod_export():
-    if bpy.context.scene.mcmi_tools_settings.export_on_reload:
+    cfg = getattr(getattr(bpy.context, 'scene', None), 'mcmi_tools_settings', None)
+    if cfg is not None and getattr(cfg, 'export_on_reload', False):
         print('Triggered export on addon reload...')
         bpy.ops.mcmi_tools.export_mod()
     

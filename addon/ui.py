@@ -2,6 +2,10 @@ import subprocess
 import json
 import re
 import os
+import sys
+import importlib
+import time
+import traceback
 from pathlib import Path
 import bpy
 
@@ -18,10 +22,8 @@ from ..migoto_io.blender_interface.objects import *
 from ..migoto_io.blender_interface.collections import *
 from ..migoto_io.blender_interface.utility import *
 
-from ..blender_import.blender_import import blender_import
 from ..blender_export.blender_export import blender_export
 from ..blender_export.ini_maker import IniMaker
-from ..extract_frame_data.extract_frame_data import extract_frame_data
 from ..extract_frame_data.metadata_format import read_metadata
 
 from .modules.toolbox.ui import *
@@ -29,26 +31,23 @@ from ..language import tr
 from ..migoto_io.blender_tools.vertex_groups import fill_gaps_in_vertex_groups, merge_vertex_groups
 
 
-def parse_hash_filter_list(raw):
-    if not raw:
-        return []
-    try:
-        data = json.loads(raw)
-    except Exception:
-        return []
-    if not isinstance(data, list):
-        return []
-    result = []
-    for value in data:
-        if isinstance(value, str) and re.fullmatch(r'[a-fA-F0-9]{8}', value):
-            hash_value = value.lower()
-            if hash_value not in result:
-                result.append(hash_value)
-    return result
+class TeeStream:
+    def __init__(self, *streams):
+        self.streams = [stream for stream in streams if stream is not None]
+
+    def write(self, text):
+        for stream in self.streams:
+            stream.write(text)
+            stream.flush()
+        return len(text)
+
+    def flush(self):
+        for stream in self.streams:
+            stream.flush()
 
 
-def dump_hash_filter_list(hashes):
-    return json.dumps(sorted(hashes))
+def get_error_log_path():
+    return Path(__file__).resolve().parents[1] / 'Error.log'
 
 
 def parse_component_id(name):
@@ -61,6 +60,56 @@ def parse_component_id(name):
 def reverse_folder_available():
     addon_root = Path(__file__).resolve().parents[1]
     return (addon_root / 'Reverse').is_dir()
+
+
+def get_reloaded_extract_frame_data():
+    package_root = __package__.rsplit('.', 1)[0]
+    reload_order = [
+        'migoto_io.data_model.dxgi_format',
+        'migoto_io.data_model.byte_buffer',
+        'migoto_io.dump_parser.dict_filter',
+        'migoto_io.dump_parser.log_parser',
+        'migoto_io.dump_parser.filename_parser',
+        'migoto_io.dump_parser.dump_parser',
+        'migoto_io.dump_parser.calls_collector',
+        'migoto_io.dump_parser.resource_collector',
+        'migoto_io.dump_parser.data_collector',
+        'extract_frame_data.data_extractor',
+        'extract_frame_data.shapekey_builder',
+        'extract_frame_data.component_builder',
+        'extract_frame_data.output_builder',
+        'extract_frame_data.extract_frame_data',
+    ]
+    module = None
+    for relative_name in reload_order:
+        module_name = f'{package_root}.{relative_name}'
+        if module_name in sys.modules:
+            module = importlib.reload(sys.modules[module_name])
+        else:
+            module = importlib.import_module(f'..{relative_name}', __package__)
+    return module.extract_frame_data
+
+
+def get_reloaded_blender_import():
+    package_root = __package__.rsplit('.', 1)[0]
+    reload_order = [
+        'migoto_io.data_model.dxgi_format',
+        'migoto_io.data_model.byte_buffer',
+        'migoto_io.data_model.data_importer',
+        'migoto_io.data_model.data_extractor',
+        'migoto_io.data_model.data_model',
+        'extract_frame_data.metadata_format',
+        'blender_import.material_setup',
+        'blender_import.blender_import',
+    ]
+    module = None
+    for relative_name in reload_order:
+        module_name = f'{package_root}.{relative_name}'
+        if module_name in sys.modules:
+            module = importlib.reload(sys.modules[module_name])
+        else:
+            module = importlib.import_module(f'..{relative_name}', __package__)
+    return module.blender_import
 
 
 def is_effective_merged_skeleton(mode: str) -> bool:
@@ -770,6 +819,63 @@ def add_row_with_error_handler(layout, cfg, setting_names):
         return row
 
 
+DISABLED_EXPORT_PREFIXES = ('Disabled-', 'Disabled+')
+
+
+def resolve_export_mod_output_folder(mod_output_folder):
+    mod_output_folder = (mod_output_folder or '').strip()
+    if not mod_output_folder:
+        return None
+
+    base_path = resolve_path(mod_output_folder)
+    base_name = base_path.name
+    if not base_name:
+        return None
+
+    stripped_name = base_name
+    for prefix in DISABLED_EXPORT_PREFIXES:
+        if stripped_name.startswith(prefix):
+            stripped_name = stripped_name[len(prefix):]
+            break
+
+    candidate_names = []
+
+    def add_candidate(name):
+        if name and name not in candidate_names:
+            candidate_names.append(name)
+
+    add_candidate(base_name)
+    if stripped_name != base_name:
+        add_candidate(stripped_name)
+        for prefix in DISABLED_EXPORT_PREFIXES:
+            add_candidate(prefix + stripped_name)
+    else:
+        for prefix in DISABLED_EXPORT_PREFIXES:
+            add_candidate(prefix + base_name)
+
+    candidates = []
+    seen_paths = set()
+    for name in candidate_names:
+        candidate = base_path.with_name(name).resolve()
+        if candidate not in seen_paths:
+            seen_paths.add(candidate)
+            candidates.append(candidate)
+
+    existing = [candidate for candidate in candidates if candidate.is_dir()]
+    if not existing:
+        return None
+
+    for candidate in existing:
+        if candidate == base_path:
+            return candidate
+
+    for candidate in existing:
+        if not candidate.name.startswith(DISABLED_EXPORT_PREFIXES):
+            return candidate
+
+    return existing[0]
+
+
 class MCMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
     """
     Wuthering Waves modding toolkit
@@ -866,6 +972,7 @@ class MCMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
         row.prop(cfg, 'mod_output_folder', text=tr('mod_output_folder'))
         
         layout.row().prop(cfg, 'mod_skeleton_type', text=tr('mod_skeleton_type'))
+        layout.row().prop(cfg, 'texture_mode', text=tr('texture_mode'))
 
         if not cfg.partial_export:
 
@@ -876,6 +983,8 @@ class MCMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
             row = layout.row(align=True)
             row.prop(cfg, 'copy_textures', text=tr('copy_textures'))
             row.prop(cfg, 'update_textures', text=tr('update_textures'))
+            if cfg.texture_mode in ('SLOT_SIMPLE', 'SLOT_COMPLEX'):
+                row.prop(cfg, 'export_textures', text=tr('export_textures'))
 
             col = layout.column(align=True)
             grid = col.grid_flow(columns=2, align=True)
@@ -961,12 +1070,6 @@ class MCMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
         filter_col.prop(cfg, 'skip_jpg_textures', text=tr('skip_jpg_textures'))
         filter_col.prop(cfg, 'skip_known_cubemap_textures', text=tr('skip_known_cubemap_textures'))
         filter_col.prop(cfg, 'skip_same_slot_hash_textures', text=tr('skip_same_slot_hash_textures'))
-
-        layout.row()
-
-        row = layout.row(align=True)
-        row.operator(MCMI_AddShadingFilterHash.bl_idname, text=tr('add_shading_filter'))
-        row.operator(MCMI_RemoveShadingFilterHash.bl_idname, text=tr('remove_shading_filter'))
 
         layout.row().operator(MCMI_ExtractFrameData.bl_idname, text=tr('extract_frame_data'))
 
@@ -1190,6 +1293,7 @@ class MCMI_Import(bpy.types.Operator):
             clear_error(cfg)
 
             cfg.mod_skeleton_type = cfg.import_skeleton_type
+            import_func = get_reloaded_blender_import()
 
             reverse_tools = get_reverse_tools()
             if reverse_tools is not None and reverse_tools.is_mod_folder(cfg.object_source_folder):
@@ -1197,13 +1301,13 @@ class MCMI_Import(bpy.types.Operator):
                 try:
                     temp_folder = reverse_tools.reverse_mod_extract_to_temp(cfg.object_source_folder)
                     cfg.object_source_folder = str(temp_folder)
-                    blender_import(self, context, cfg)
+                    import_func(self, context, cfg)
                 finally:
                     cfg.object_source_folder = original_source
                 return {'FINISHED'}
 
             if not cfg.enable_lod_mode:
-                blender_import(self, context, cfg)
+                import_func(self, context, cfg)
             else:
                 source_folders = [cfg.object_source_folder]
                 if (cfg.lod1_source_folder or '').strip():
@@ -1216,7 +1320,7 @@ class MCMI_Import(bpy.types.Operator):
                 for source_folder in source_folders:
                     before = {collection.name for collection in bpy.data.collections}
                     cfg.object_source_folder = source_folder
-                    blender_import(self, context, cfg)
+                    import_func(self, context, cfg)
                     after = {collection.name for collection in bpy.data.collections}
                     created = sorted(list(after - before))
                     if len(created) == 0:
@@ -1332,11 +1436,22 @@ class MCMI_Export(bpy.types.Operator):
 
             return []
 
-    def execute(self, context):
+    def _execute_export(self, context):
+        original_visible_mod_output = None
+        export_path_notice = None
         try:
             cfg = context.scene.mcmi_tools_settings
 
             clear_error(cfg)
+
+            export_mod_output_folder = resolve_export_mod_output_folder(cfg.mod_output_folder)
+            if export_mod_output_folder is not None and export_mod_output_folder != resolve_path(cfg.mod_output_folder):
+                original_visible_mod_output = cfg.mod_output_folder
+                cfg.mod_output_folder = str(export_mod_output_folder)
+                export_path_notice = (
+                    f'已自动切换 MOD 导出路径: '
+                    f'{resolve_path(original_visible_mod_output).name} -> {export_mod_output_folder.name}'
+                )
 
             excluded_buffers = self.get_excluded_buffers(context)
 
@@ -1403,11 +1518,41 @@ class MCMI_Export(bpy.types.Operator):
                     cfg.component_collection = original_component_collection
                     cfg.object_source_folder = original_object_source
                     cfg.mod_output_folder = original_mod_output
+
+            if export_path_notice is not None:
+                self.report({'INFO'}, export_path_notice)
             
         except ConfigError as e:
             self.report({'ERROR'}, str(e))
+        finally:
+            if original_visible_mod_output is not None:
+                cfg = context.scene.mcmi_tools_settings
+                cfg.mod_output_folder = original_visible_mod_output
             
         return {'FINISHED'}
+
+    def execute(self, context):
+        log_path = get_error_log_path()
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+
+        original_stdout = sys.stdout
+        original_stderr = sys.stderr
+        with open(log_path, 'w', encoding='utf-8', errors='replace') as log_file:
+            tee_stdout = TeeStream(original_stdout, log_file)
+            tee_stderr = TeeStream(original_stderr, log_file)
+            sys.stdout = tee_stdout
+            sys.stderr = tee_stderr
+            print(f'MCMI export log started: {time.strftime("%Y-%m-%d %H:%M:%S")}')
+            print(f'Error.log: {log_path}')
+            try:
+                return self._execute_export(context)
+            except Exception:
+                traceback.print_exc()
+                raise
+            finally:
+                print(f'MCMI export log finished: {time.strftime("%Y-%m-%d %H:%M:%S")}')
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
 
 
 class MCMI_ExtractFrameData(bpy.types.Operator):
@@ -1424,7 +1569,14 @@ class MCMI_ExtractFrameData(bpy.types.Operator):
 
             clear_error(cfg)
 
-            output = extract_frame_data(cfg)
+            output = get_reloaded_extract_frame_data()(cfg)
+
+            written_object_folders = getattr(output, 'written_object_folders', {})
+            if isinstance(written_object_folders, dict) and len(written_object_folders) > 0:
+                if len(written_object_folders) == 1:
+                    cfg.last_extract_object_folder = next(iter(written_object_folders.values()))
+                else:
+                    cfg.last_extract_object_folder = str(resolve_path(cfg.extract_output_folder).resolve())
             
             objects_missing_shapekeys = []
             for object_hash, object_data in output.objects.items():
@@ -1476,43 +1628,6 @@ class MCMI_ExtractMod(bpy.types.Operator):
         except ConfigError as e:
             self.report({'ERROR'}, str(e))
 
-        return {'FINISHED'}
-
-
-class MCMI_AddShadingFilterHash(bpy.types.Operator):
-    bl_idname = "mcmi_tools.add_shading_filter_hash"
-    bl_label = "Add Shading Filter"
-    bl_description = "Add hash from Assign Hash field to internal shading filter list"
-
-    def execute(self, context):
-        cfg = context.scene.mcmi_tools_settings
-        hash_value = (cfg.assign_hash or '').strip().lower()
-        if re.fullmatch(r'[a-f0-9]{8}', hash_value) is None:
-            self.report({'ERROR'}, tr('invalid_hash_for_shading_filter'))
-            return {'FINISHED'}
-        filter_hashes = parse_hash_filter_list(cfg.shading_filter_hashes)
-        if hash_value not in filter_hashes:
-            filter_hashes.append(hash_value)
-        cfg.shading_filter_hashes = dump_hash_filter_list(filter_hashes)
-        self.report({'INFO'}, tr('added_hash_to_shading_filter').format(hash=hash_value))
-        return {'FINISHED'}
-
-
-class MCMI_RemoveShadingFilterHash(bpy.types.Operator):
-    bl_idname = "mcmi_tools.remove_shading_filter_hash"
-    bl_label = "Remove Shading Filter"
-    bl_description = "Remove hash from Assign Hash field from internal shading filter list"
-
-    def execute(self, context):
-        cfg = context.scene.mcmi_tools_settings
-        hash_value = (cfg.assign_hash or '').strip().lower()
-        if re.fullmatch(r'[a-f0-9]{8}', hash_value) is None:
-            self.report({'ERROR'}, tr('invalid_hash_for_shading_filter'))
-            return {'FINISHED'}
-        filter_hashes = parse_hash_filter_list(cfg.shading_filter_hashes)
-        filter_hashes = [item for item in filter_hashes if item != hash_value]
-        cfg.shading_filter_hashes = dump_hash_filter_list(filter_hashes)
-        self.report({'INFO'}, tr('removed_hash_from_shading_filter').format(hash=hash_value))
         return {'FINISHED'}
 
 

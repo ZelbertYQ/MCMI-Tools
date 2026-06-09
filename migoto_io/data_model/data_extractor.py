@@ -7,7 +7,7 @@ import bpy
 from typing import List, Tuple, Dict, Optional
 from operator import attrgetter, itemgetter
 
-from .byte_buffer import AbstractSemantic, Semantic, BufferSemantic, NumpyBuffer, BufferLayout
+from .byte_buffer import AbstractSemantic, Semantic, BufferSemantic, NumpyBuffer, BufferLayout, enum_equal
 from .dxgi_format import DXGIFormat, DXGIType
 
 
@@ -24,6 +24,20 @@ class BlenderDataExtractor:
     ]
     format_converters: Dict[AbstractSemantic, List[callable]] = {}
     semantic_converters: Dict[AbstractSemantic, List[callable]] = {}
+
+    @staticmethod
+    def semantic_equal(lhs, rhs):
+        return enum_equal(lhs, rhs)
+
+    @classmethod
+    def semantic_in(cls, value, candidates):
+        return any(cls.semantic_equal(value, candidate) for candidate in candidates)
+
+    def get_blender_data_format(self, semantic):
+        for key, value in self.blender_data_formats.items():
+            if self.semantic_equal(key, semantic):
+                return value
+        raise KeyError(semantic)
 
     def _get_color_attribute_by_index(self, mesh: bpy.types.Mesh, color_index: int):
         # Prefer modern color attributes and map COLOR/COLOR1 by slot order.
@@ -60,7 +74,7 @@ class BlenderDataExtractor:
             if semantic not in format_converters:
                 format_converters[semantic] = converter
 
-        layout.add_element(BufferSemantic(AbstractSemantic(Semantic.VertexId, 0), self.blender_data_formats[Semantic.VertexId]))
+        layout.add_element(BufferSemantic(AbstractSemantic(Semantic.VertexId, 0), self.get_blender_data_format(Semantic.VertexId)))
         proxy_layout = self.make_proxy_layout(layout, semantic_converters)
 
         if vertex_ids_cache is None:
@@ -105,7 +119,7 @@ class BlenderDataExtractor:
         proxy_layout = BufferLayout([])
         # Some formats cannot be converted at foreach_get -> numpy request level and require special care
         for export_semantic in export_layout.semantics:
-            blender_format = self.blender_data_formats[export_semantic.abstract.enum]
+            blender_format = self.get_blender_data_format(export_semantic.abstract.enum)
             export_format = export_semantic.format
 
             proxy_semantic = copy.deepcopy(export_semantic)
@@ -121,13 +135,13 @@ class BlenderDataExtractor:
             elif export_semantic.abstract in semantic_converters.keys():
                 # Semantic converter specified and it works with data values
                 # Lets extract data in original format to prevent possible precision loss
-                if export_semantic.abstract.enum in [Semantic.Blendindices, Semantic.Blendweight]:
+                if self.semantic_in(export_semantic.abstract.enum, [Semantic.Blendindices, Semantic.Blendweight]):
                     proxy_semantic.stride = blender_format.byte_width * proxy_semantic.get_num_values()
                     proxy_semantic.format = blender_format
                 else:
                     proxy_semantic.format = blender_format
                     proxy_semantic.stride = blender_format.byte_width
-            elif export_semantic.abstract.enum not in [Semantic.Blendindices, Semantic.Blendweight]:
+            elif not self.semantic_in(export_semantic.abstract.enum, [Semantic.Blendindices, Semantic.Blendweight]):
                 # Only blends can be directly exported with any bitness and padding, because they aren't extracted with foreach_get
                 # Other semantics may require conversion:
                 if export_format.num_values != blender_format.num_values:
@@ -170,9 +184,9 @@ class BlenderDataExtractor:
         # Make loop data layout
         layout = BufferLayout([])
         for buffer_semantic in proxy_layout.semantics:
-            if buffer_semantic.abstract.enum == Semantic.Index:
+            if self.semantic_equal(buffer_semantic.abstract.enum, Semantic.Index):
                 continue
-            if buffer_semantic.abstract.enum in self.blender_loop_semantics:
+            if self.semantic_in(buffer_semantic.abstract.enum, self.blender_loop_semantics):
                 layout.add_element(buffer_semantic)
 
         # Calculate data for Semantic.Tangent
@@ -187,15 +201,15 @@ class BlenderDataExtractor:
             semantic = buffer_semantic.abstract.enum
             semantic_name = buffer_semantic.get_name()
             numpy_type = buffer_semantic.get_numpy_type()
-            if semantic == Semantic.VertexId:
+            if self.semantic_equal(semantic, Semantic.VertexId):
                 data = self.fetch_data(mesh.loops, 'vertex_index', numpy_type, size)
-            elif semantic == Semantic.Normal:
+            elif self.semantic_equal(semantic, Semantic.Normal):
                 data = self.fetch_data(mesh.loops, 'normal', numpy_type, size)
-            elif semantic == Semantic.Tangent:
+            elif self.semantic_equal(semantic, Semantic.Tangent):
                 data = self.fetch_data(mesh.loops, 'tangent', numpy_type, size)
-            elif semantic == Semantic.BitangentSign:
+            elif self.semantic_equal(semantic, Semantic.BitangentSign):
                 data = self.fetch_data(mesh.loops, 'bitangent_sign', numpy_type, size)
-            elif semantic == Semantic.Color:
+            elif self.semantic_equal(semantic, Semantic.Color):
                 color_index = buffer_semantic.abstract.index
                 color_attribute = self._get_color_attribute_by_index(mesh, color_index)
                 if color_attribute is None:
@@ -207,7 +221,7 @@ class BlenderDataExtractor:
                     else:
                         raise ValueError(f'Missing color layer for semantic {semantic_name} (slot {color_index})')
                 data = self.fetch_data(color_attribute.data, 'color', numpy_type, size)
-            elif semantic == Semantic.TexCoord:
+            elif self.semantic_equal(semantic, Semantic.TexCoord):
                 uv_index = buffer_semantic.abstract.index
                 uv_layer = self._get_uv_layer_by_index(mesh, uv_index)
                 if uv_layer is None:
@@ -266,7 +280,7 @@ class BlenderDataExtractor:
         # Make vertex data layout
         layout = BufferLayout([])
         for buffer_semantic in proxy_layout.semantics:
-            if buffer_semantic.abstract.enum in self.blender_vertex_semantics:
+            if self.semantic_in(buffer_semantic.abstract.enum, self.blender_vertex_semantics):
                 layout.add_element(buffer_semantic)
 
         if len(layout.semantics) == 0:
@@ -279,7 +293,7 @@ class BlenderDataExtractor:
 
         vertex_groups = None
         for buffer_semantic in proxy_layout.semantics:
-            if buffer_semantic.abstract.enum in [Semantic.Blendindices, Semantic.Blendweight]:
+            if self.semantic_in(buffer_semantic.abstract.enum, [Semantic.Blendindices, Semantic.Blendweight]):
                 vertex_groups = [sorted(vertex.groups, key=attrgetter('weight'), reverse=True)
                                  for vertex in mesh.vertices]
                 break
@@ -289,13 +303,13 @@ class BlenderDataExtractor:
             semantic = buffer_semantic.abstract.enum
             numpy_type = buffer_semantic.get_numpy_type()
 
-            if semantic == Semantic.Position:
+            if self.semantic_equal(semantic, Semantic.Position):
                 data = self.fetch_data(mesh.vertices, 'undeformed_co', numpy_type, size)
-            elif semantic == Semantic.Blendindices:
+            elif self.semantic_equal(semantic, Semantic.Blendindices):
                 num_vgs = buffer_semantic.get_num_values()
                 data = numpy.array([[vg.group for vg in groups[:num_vgs]] + [0] * (num_vgs - len(groups))
                                     for groups in vertex_groups], dtype=numpy.uint32)
-            elif semantic == Semantic.Blendweight:
+            elif self.semantic_equal(semantic, Semantic.Blendweight):
                 dtype = numpy_type[0] if isinstance(numpy_type, tuple) else numpy_type
                 num_vgs = buffer_semantic.get_num_values()
                 data = numpy.array([[vg.weight for vg in groups[:num_vgs]] + [0] * (num_vgs - len(groups))
@@ -318,7 +332,7 @@ class BlenderDataExtractor:
         
         start_time = time.time()
 
-        numpy_type = self.blender_data_formats[Semantic.ShapeKey].get_numpy_type()
+        numpy_type = self.get_blender_data_format(Semantic.ShapeKey).get_numpy_type()
 
         base_data = None
         basis_key_block = obj.data.shape_keys.key_blocks[0] if obj.data.shape_keys else None

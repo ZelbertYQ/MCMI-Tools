@@ -11,6 +11,15 @@ STABLE_VERTEX_ID_ATTRIBUTE = 'MCMI_VERTEX_ID'
 
 
 class BlenderDataImporter:
+    @staticmethod
+    def semantic_equal(lhs, rhs):
+        if lhs == rhs:
+            return True
+        return getattr(lhs, 'value', getattr(lhs, 'name', lhs)) == getattr(rhs, 'value', getattr(rhs, 'name', rhs))
+
+    @classmethod
+    def semantic_in(cls, value, candidates):
+        return any(cls.semantic_equal(value, candidate) for candidate in candidates)
 
     def set_data(self,
                  obj: bpy.types.Object, 
@@ -40,25 +49,25 @@ class BlenderDataImporter:
             semantic = buffer_semantic.abstract.enum
 
             # Skip tangents import, we'll recalc them on export
-            if semantic in [Semantic.Tangent, Semantic.BitangentSign]:
+            if self.semantic_in(semantic, [Semantic.Tangent, Semantic.BitangentSign]):
                 continue
 
             # Get converted data from vertex buffer
             data = self.get_semantic_data(vertex_buffer, buffer_semantic, format_converters, semantic_converters)
 
-            if semantic == Semantic.ShapeKey:
+            if self.semantic_equal(semantic, Semantic.ShapeKey):
                 shapekeys[buffer_semantic.abstract.index] = data
-            elif semantic == Semantic.Color:
+            elif self.semantic_equal(semantic, Semantic.Color):
                 self.import_colors(mesh, buffer_semantic.get_name(), data, vertex_ids, legacy_vertex_colors)
-            elif semantic == Semantic.TexCoord:
+            elif self.semantic_equal(semantic, Semantic.TexCoord):
                 texcoords[buffer_semantic.abstract.index] = data
-            elif semantic == Semantic.Normal:
+            elif self.semantic_equal(semantic, Semantic.Normal):
                 normals = data
-            elif semantic == Semantic.Blendindices:
+            elif self.semantic_equal(semantic, Semantic.Blendindices):
                 vg_indices[buffer_semantic.abstract.index] = data
-            elif semantic == Semantic.Blendweight:
+            elif self.semantic_equal(semantic, Semantic.Blendweight):
                 vg_weights[buffer_semantic.abstract.index] = data
-            elif semantic == Semantic.Position:
+            elif self.semantic_equal(semantic, Semantic.Position):
                 self.import_positions(mesh, data)
             else:
                 continue

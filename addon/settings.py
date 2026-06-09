@@ -14,6 +14,22 @@ from .exceptions import clear_error
 from ..language import tr
 
 
+def _on_tool_mode_update(self, context):
+    clear_error(self)
+    if self.tool_mode != 'IMPORT_OBJECT':
+        return
+
+    last_extract_object_folder = (self.last_extract_object_folder or '').strip()
+    if not last_extract_object_folder:
+        return
+
+    try:
+        if Path(last_extract_object_folder).is_dir():
+            self.object_source_folder = last_extract_object_folder
+    except Exception:
+        pass
+
+
 def _tool_mode_items(self, context):
     r = [
         ('EXPORT_MOD', tr('mode_export_mod'), 'Export selected collection as WWMI mod'),
@@ -51,6 +67,16 @@ def _export_skeleton_items(self, context):
         ('COMPONENT_TO_MERGED', tr('skeleton_component_to_merged'), 'Convert per-component Vertex Groups to merged ids on export.'),
     ]
     _export_skeleton_items._r = r
+    return r
+
+
+def _texture_mode_items(self, context):
+    r = [
+        ('HASH', tr('texture_mode_hash'), 'Reference textures by hash'),
+        ('SLOT_SIMPLE', tr('texture_mode_slot_simple'), 'Use slot texture overrides, one material selection per component'),
+        ('SLOT_COMPLEX', tr('texture_mode_slot_complex'), 'Use slot texture overrides, per-object material selection'),
+    ]
+    _texture_mode_items._r = r
     return r
 
 
@@ -141,7 +167,7 @@ class MCMI_Settings(bpy.types.PropertyGroup):
         name="Mode",
         description="Defines list of available actions",
         items=_tool_mode_items,
-        update=lambda self, context: clear_error(self),
+        update=_on_tool_mode_update,
         default=2,
     ) # type: ignore
 
@@ -226,12 +252,6 @@ class MCMI_Settings(bpy.types.PropertyGroup):
         name="Assign Hash",
         description="IB hash to filter extraction. When specified, only the object with this IB hash will be extracted. Leave empty to extract all objects.",
         default='',
-    ) # type: ignore
-
-    shading_filter_hashes: StringProperty(
-        name="Shading Filter Hashes",
-        description="Internal list of texture hashes excluded from diffuse auto-shading",
-        default='[]',
     ) # type: ignore
 
     ########################################
@@ -329,6 +349,13 @@ class MCMI_Settings(bpy.types.PropertyGroup):
         update=lambda self, context: self.on_update_clear_error('mod_output_folder'),
     ) # type: ignore
 
+    texture_mode: bpy.props.EnumProperty(
+        name="Texture",
+        description="Controls how textures are referenced in exported mod.ini",
+        items=_texture_mode_items,
+        default=0,
+    ) # type: ignore
+
     mod_skeleton_type: bpy.props.EnumProperty(
         name="Skeleton",
         description="Select the same skeleton type that was used for import! Defines logic of exported mod.ini.",
@@ -351,6 +378,12 @@ class MCMI_Settings(bpy.types.PropertyGroup):
     update_textures: BoolProperty(
         name="Update Textures",
         description="Update texture override sections in mod.ini",
+        default=True,
+    ) # type: ignore
+
+    export_textures: BoolProperty(
+        name="Export Textures",
+        description="Export textures in slot mode and convert non-DDS images to DDS",
         default=True,
     ) # type: ignore
 
@@ -560,6 +593,13 @@ class MCMI_Settings(bpy.types.PropertyGroup):
         name="Collect Extracted Resources",
         description="Copy all raw frame dump files (IB, VB, textures, shapekey buffers, etc.) used for the extracted object into an ExtractResources subfolder. If extraction fails with an error, raw resources are saved to ExtractError/ExtractResources instead",
         default=False,
+    ) # type: ignore
+
+    last_extract_object_folder: StringProperty(
+        name="Last Extract Object Folder",
+        description="Internal path to the most recent extracted object folder used to prefill import sources",
+        default='',
+        subtype="DIR_PATH",
     ) # type: ignore
 
     # Service

@@ -27,6 +27,7 @@ def init():
 
 def register():
     for cls in ordered_classes:
+        unregister_stale_class(cls)
         bpy.utils.register_class(cls)
 
     for module in modules:
@@ -39,7 +40,10 @@ def register():
 def unregister():
     for cls in reversed(ordered_classes):
         try:
-            bpy.utils.unregister_class(cls)
+            if getattr(cls, "is_registered", False):
+                bpy.utils.unregister_class(cls)
+            else:
+                unregister_stale_class(cls)
         except Exception as e:
             raise Exception(f'Failed to unregister class {str(cls)}: {e}') from e
 
@@ -53,12 +57,29 @@ def unregister():
 # Import modules
 #################################################
 
+def unregister_stale_class(cls):
+    stale_cls = getattr(bpy.types, cls.__name__, None)
+    if stale_cls is not None and stale_cls is not cls:
+        try:
+            bpy.utils.unregister_class(stale_cls)
+        except Exception:
+            pass
+    elif getattr(cls, "is_registered", False):
+        try:
+            bpy.utils.unregister_class(cls)
+        except Exception:
+            pass
+
 def get_all_submodules(directory):
     return list(iter_submodules(directory, directory.name))
 
 def iter_submodules(path, package_name):
     for name in sorted(iter_submodule_names(path)):
-        yield importlib.import_module("." + name, package_name)
+        module_name = package_name + "." + name
+        if module_name in sys.modules:
+            yield importlib.reload(sys.modules[module_name])
+        else:
+            yield importlib.import_module("." + name, package_name)
 
 def iter_submodule_names(path, root=""):
     for _, module_name, is_package in pkgutil.iter_modules([str(path)]):

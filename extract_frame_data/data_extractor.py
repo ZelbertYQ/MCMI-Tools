@@ -112,7 +112,7 @@ class DataExtractor:
                         vertex_ids_hash=vertex_ids_hash,
                         vertex_offsets_hash=vertex_offsets_hash,
                         entries=[ShapeKeyDataEntry(
-                            dispatch_y=branch_call.call.parameters[CallParameters.Dispatch].ThreadGroupCountY,
+                            dispatch_y=branch_call.call.get_parameter(CallParameters.Dispatch).ThreadGroupCountY,
                             shapekey_offset_buffer=branch_call.resources['SHAPEKEY_OFFSET_BUFFER'],
                             shapekey_vertex_id_buffer=branch_call.resources['SHAPEKEY_VERTEX_ID_BUFFER'],
                             shapekey_vertex_offset_buffer=branch_call.resources['SHAPEKEY_VERTEX_OFFSET_BUFFER'],
@@ -121,7 +121,7 @@ class DataExtractor:
                     )
                     self.shape_key_data[shapekey_hash] = shape_key_data
                 else:
-                    dispatch_y = branch_call.call.parameters[CallParameters.Dispatch].ThreadGroupCountY
+                    dispatch_y = branch_call.call.get_parameter(CallParameters.Dispatch).ThreadGroupCountY
                     if any(getattr(entry, 'dispatch_y', None) == dispatch_y for entry in cached_shape_key_data.entries):
                         if shapekey_scale_hash != cached_shape_key_data.shapekey_scale_hash:
                             raise ValueError(f'shapekey scale hash mismatch for SHAPEKEY_CS_1')
@@ -232,8 +232,8 @@ class DataExtractor:
                     cb4_hash=branch_call.resources['SKELETON_DATA'].hash,
                     vertex_offset=vertex_offset,
                     vertex_count=vertex_count,
-                    index_offset=branch_call.call.parameters[CallParameters.DrawIndexed].StartIndexLocation,
-                    index_count=branch_call.call.parameters[CallParameters.DrawIndexed].IndexCount,
+                    index_offset=branch_call.call.get_parameter(CallParameters.DrawIndexed).StartIndexLocation,
+                    index_count=branch_call.call.get_parameter(CallParameters.DrawIndexed).IndexCount,
                     # dispatch_x=branch_call.call.parameters[CallParameters.Dispatch].ThreadGroupCountX,
                     index_buffer=index_buffer,
                     position_buffer=position_buffer.get_fragment(vertex_offset, vertex_count),

@@ -26,23 +26,39 @@ class DictFilter:
         self.filter = self.validate_filter(filter)
         self.filtered_dict = self.get_filtered_dict(self.filter)
 
+    @staticmethod
+    def normalize_filter_condition(value, field_name):
+        if isinstance(value, FilterCondition):
+            return value
+        if isinstance(value, Enum) and value.__class__.__name__ == FilterCondition.__name__:
+            try:
+                return FilterCondition[value.name]
+            except KeyError:
+                pass
+        raise ValueError(
+            f'Invalid filter: expected "FilterCondition" type for {field_name}, got "{type(value)}"!')
+
+    @staticmethod
+    def is_filter_like(value):
+        return isinstance(value, Filter) or all(hasattr(value, attr) for attr in (
+            'condition', 'keys', 'attributes_condition', 'attributes',
+            'dictionaries_condition', 'dictionaries',
+        ))
+
     def validate_filter(self, filter):
 
         if not filter.condition:
             raise ValueError(f'Invalid filter: no merge condition specified"!')
 
-        if not isinstance(filter.condition, FilterCondition):
-            raise ValueError(
-                f'Invalid filter: expected "FilterCondition" type for condition, got "{type(filter.condition)}"!')
+        filter.condition = self.normalize_filter_condition(filter.condition, 'condition')
+        filter.dictionaries_condition = self.normalize_filter_condition(
+            filter.dictionaries_condition, 'dictionaries_condition')
 
-        if not isinstance(filter.dictionaries_condition, FilterCondition):
-            raise ValueError(
-                f'Invalid filter: expected "FilterCondition" type for dictionaries_condition, got "{type(filter.dictionaries_condition)}"!')
         if not isinstance(filter.dictionaries, list):
             filter.dictionaries = [filter.dictionaries]
 
         for i, dictionary in enumerate(filter.dictionaries):
-            if isinstance(dictionary, Filter):
+            if self.is_filter_like(dictionary):
                 filter.dictionaries[i] = self.validate_filter(dictionary)
                 continue
             if not isinstance(dictionary, dict):
@@ -53,17 +69,19 @@ class DictFilter:
             if not isinstance(filter.keys, list):
                 filter.keys = [filter.keys]
 
+        if filter.attributes is None:
+            filter.attributes_condition = None
+
         if filter.attributes_condition is not None:
-            if not isinstance(filter.attributes_condition, FilterCondition):
-                raise ValueError(
-                    f'Invalid filter: expected "FilterCondition" type for attributes_condition, got "{type(filter.attributes_condition)}"!')
+            filter.attributes_condition = self.normalize_filter_condition(
+                filter.attributes_condition, 'attributes_condition')
 
             for attribute, values in filter.attributes.items():
                 if len(attribute.strip()) == 0:
                     raise ValueError(f'Invalid filter: attribute "{attribute}" has no non-whitespace characters!')
 
             for dictionary in filter.dictionaries:
-                if isinstance(dictionary, Filter) or len(dictionary) == 0:
+                if self.is_filter_like(dictionary) or len(dictionary) == 0:
                     continue
 
                 first_dict_entry = next(iter(dictionary.values()))
@@ -114,7 +132,7 @@ class DictFilter:
             # Build a list of external dicts and dicts resulting from nested filters
             dictionaries = []
             for dictionary in filter.dictionaries:
-                if isinstance(dictionary, Filter):
+                if self.is_filter_like(dictionary):
                     dictionary = self.get_filtered_dict(dictionary)
                 dictionaries.append(dictionary)
             # Apply dictionaries filter condition
@@ -210,14 +228,21 @@ class DictFilter:
         return result
 
     @staticmethod
-    def has_value(must_contain_value, attribute_value, filter_values):
-        if must_contain_value:
-            if attribute_value in filter_values:
-                return True
-        else:
-            if attribute_value not in filter_values:
-                return True
+    def values_equal(lhs, rhs):
+        if lhs == rhs:
+            return True
+        if isinstance(lhs, Enum) and isinstance(rhs, Enum):
+            if lhs.__class__.__name__ == rhs.__class__.__name__:
+                return lhs.name == rhs.name or lhs.value == rhs.value
         return False
 
-
-
+    @classmethod
+    def has_value(cls, must_contain_value, attribute_value, filter_values):
+        detected = any(cls.values_equal(attribute_value, value) for value in filter_values)
+        if must_contain_value:
+            if detected:
+                return True
+        else:
+            if not detected:
+                return True
+        return False

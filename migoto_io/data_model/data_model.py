@@ -10,7 +10,7 @@ import bpy
 from typing import Tuple, List, Dict, Optional, Union
 
 from .dxgi_format import DXGIFormat, DXGIType
-from .byte_buffer import Semantic, AbstractSemantic, BufferSemantic, BufferLayout, NumpyBuffer
+from .byte_buffer import Semantic, AbstractSemantic, BufferSemantic, BufferLayout, NumpyBuffer, enum_equal
 from .data_extractor import BlenderDataExtractor
 from .data_importer import BlenderDataImporter
 
@@ -42,6 +42,20 @@ class DataModel:
         Semantic.ShapeKey: DXGIFormat.R32G32B32_FLOAT,
     }
 
+    @staticmethod
+    def semantic_equal(lhs, rhs):
+        return enum_equal(lhs, rhs)
+
+    @classmethod
+    def semantic_in(cls, value, candidates):
+        return any(cls.semantic_equal(value, candidate) for candidate in candidates)
+
+    def get_blender_data_format(self, semantic):
+        for key, value in self.blender_data_formats.items():
+            if self.semantic_equal(key, semantic):
+                return value
+        raise KeyError(semantic)
+
     def set_data(self, 
                  obj: bpy.types.Mesh, 
                  mesh: bpy.types.Mesh, 
@@ -66,10 +80,10 @@ class DataModel:
 
         for semantic in vertex_buffer.layout.semantics:
             # Skip tangents import, we'll recalc them on export
-            if semantic.abstract.enum in [Semantic.Tangent, Semantic.BitangentSign]:
+            if self.semantic_in(semantic.abstract.enum, [Semantic.Tangent, Semantic.BitangentSign]):
                 continue
             # Modify coordinate (vector-based) semantics
-            if semantic.abstract.enum in [Semantic.Position, Semantic.ShapeKey, Semantic.Normal]:
+            if self.semantic_in(semantic.abstract.enum, [Semantic.Position, Semantic.ShapeKey, Semantic.Normal]):
                 # Invert X coord of every vector in arrays required to mirror mesh
                 if mirror_mesh:
                     self._insert_converter(semantic_converters, semantic.abstract, self.converter_mirror_vector)
@@ -82,18 +96,18 @@ class DataModel:
                     converter = lambda data: self.converter_rotate_vector(data, mesh_rotation)
                     self._insert_converter(semantic_converters, semantic.abstract, converter)
             # Flip V component of UV maps
-            if self.flip_texcoord_v and semantic.abstract.enum == Semantic.TexCoord:
+            if self.flip_texcoord_v and self.semantic_equal(semantic.abstract.enum, Semantic.TexCoord):
                 self._insert_converter(semantic_converters, semantic.abstract, self.converter_flip_texcoord_v)
             # Flip normals
-            if self.flip_normal and semantic.abstract.enum == Semantic.Normal:
+            if self.flip_normal and self.semantic_equal(semantic.abstract.enum, Semantic.Normal):
                 self._insert_converter(semantic_converters, semantic.abstract, self.converter_flip_vector)
             # Remap indicies of VG groups
             if vg_remap is not None:
-                if semantic.abstract.enum == Semantic.Blendindices:
+                if self.semantic_equal(semantic.abstract.enum, Semantic.Blendindices):
                     self._insert_converter(semantic_converters, semantic.abstract, lambda data: vg_remap[data])
             # Auto-resize second dimension of data array to match Blender format
-            if semantic.abstract.enum not in [Semantic.Blendindices, Semantic.Blendweight]:
-                blender_num_values = self.blender_data_formats[semantic.abstract.enum].get_num_values()
+            if not self.semantic_in(semantic.abstract.enum, [Semantic.Blendindices, Semantic.Blendweight]):
+                blender_num_values = self.get_blender_data_format(semantic.abstract.enum).get_num_values()
                 if semantic.get_num_values() != blender_num_values:
                     converter = lambda data, width=blender_num_values: self.converter_resize_second_dim(data, width)
                     self._insert_converter(format_converters, semantic.abstract, converter)
@@ -135,9 +149,9 @@ class DataModel:
             if buffer_name in excluded_buffers:
                 continue
             for semantic in buffer_layout.semantics:
-                if semantic.abstract.enum in (Semantic.ShapeKey, Semantic.RawData):
+                if self.semantic_in(semantic.abstract.enum, [Semantic.ShapeKey, Semantic.RawData]):
                     continue
-                if semantic.abstract.enum == Semantic.Index:
+                if self.semantic_equal(semantic.abstract.enum, Semantic.Index):
                     data = index_data
                 else:
                     data = vertex_buffer.get_field(semantic.get_name())
@@ -176,7 +190,7 @@ class DataModel:
             for buffer_name, buffer_layout in buffers_format.items():
                 if buffer_name not in excluded_buffers:
                     for semantic in buffer_layout.semantics:
-                        if semantic.abstract.enum in self.data_extractor.blender_loop_semantics:
+                        if self.semantic_in(semantic.abstract.enum, self.data_extractor.blender_loop_semantics):
                             fetch_loop_data = True
                             break
 
@@ -184,9 +198,9 @@ class DataModel:
         for buffer_name, buffer_layout in buffers_format.items():
             exclude_buffer = buffer_name in excluded_buffers
             for semantic in buffer_layout.semantics:
-                if exclude_buffer and semantic.abstract.enum not in self.data_extractor.blender_loop_semantics:
+                if exclude_buffer and not self.semantic_in(semantic.abstract.enum, self.data_extractor.blender_loop_semantics):
                     continue
-                if semantic.abstract.enum in [Semantic.ShapeKey, Semantic.RawData]:
+                if self.semantic_in(semantic.abstract.enum, [Semantic.ShapeKey, Semantic.RawData]):
                     continue
                 export_layout.add_element(semantic)
 
@@ -234,19 +248,19 @@ class DataModel:
         # Add generic converters
         for semantic in export_layout.semantics:
             # Flip normals
-            if self.flip_normal and semantic.abstract.enum == Semantic.Normal:
+            if self.flip_normal and self.semantic_equal(semantic.abstract.enum, Semantic.Normal):
                 self._insert_converter(semantic_converters, semantic.abstract, self.converter_flip_vector)
             # Flip tangents
-            if self.flip_tangent and semantic.abstract.enum == Semantic.Tangent:
+            if self.flip_tangent and self.semantic_equal(semantic.abstract.enum, Semantic.Tangent):
                 self._insert_converter(semantic_converters, semantic.abstract, self.converter_flip_vector)
             # Flip bitangent sign
-            if flip_bitangent_sign and semantic.abstract.enum == Semantic.BitangentSign:
+            if flip_bitangent_sign and self.semantic_equal(semantic.abstract.enum, Semantic.BitangentSign):
                 self._insert_converter(semantic_converters, semantic.abstract, self.converter_flip_vector)
             # Invert X coord of every vector in arrays required to mirror mesh
-            if mirror_mesh and semantic.abstract.enum in [Semantic.Position, Semantic.Normal, Semantic.Tangent]:
+            if mirror_mesh and self.semantic_in(semantic.abstract.enum, [Semantic.Position, Semantic.Normal, Semantic.Tangent]):
                     self._insert_converter(semantic_converters, semantic.abstract, self.converter_mirror_vector)
             # Flip V component of UV maps
-            if self.flip_texcoord_v and semantic.abstract.enum == Semantic.TexCoord:
+            if self.flip_texcoord_v and self.semantic_equal(semantic.abstract.enum, Semantic.TexCoord):
                 self._insert_converter(semantic_converters, semantic.abstract, self.converter_flip_texcoord_v)
 
         # If vertex_ids_cache is *not* None, get_data method will skip loop data fetching

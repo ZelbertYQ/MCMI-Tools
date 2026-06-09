@@ -27,6 +27,14 @@ class VgRemapMode(Enum):
     ComponentToMerged = 'COMPONENT_TO_MERGED'
 
 
+def _enum_equal(lhs, rhs):
+    if lhs == rhs:
+        return True
+    lhs_value = getattr(lhs, 'value', getattr(lhs, 'name', lhs))
+    rhs_value = getattr(rhs, 'value', getattr(rhs, 'name', rhs))
+    return lhs_value == rhs_value
+
+
 @dataclass
 class TempObject:
     name: str
@@ -34,6 +42,7 @@ class TempObject:
     vertex_count: int = 0
     index_count: int = 0
     index_offset: int = 0
+    material: dict = None
 
 
 @dataclass
@@ -41,8 +50,12 @@ class MergedObjectComponent:
     objects: List[TempObject]
     vertex_count: int = 0
     index_count: int = 0
+    index_offset: int = 0
     blend_remap_id: int = -1
     blend_remap_vg_count: int = 0
+    match_formats: list = field(default_factory=list)
+    slot_hashes: list = field(default_factory=list)
+    material: dict = None
     
     def get_object(self, object_name):
         for obj in self.objects:
@@ -278,6 +291,7 @@ class ObjectMerger:
         try:
             self.import_objects_from_collection()
             self.prepare_temp_objects()
+            self.pre_join_objects()
             self.build_merged_object()
         except Exception as e:
             self.remove_temp_objects()
@@ -285,6 +299,9 @@ class ObjectMerger:
         
         if collection_was_hidden:
             hide_collection(self.collection)
+
+    def pre_join_objects(self):
+        pass
 
     def initialize_components(self):
         self.components = []
@@ -339,6 +356,7 @@ class ObjectMerger:
         for component_id, component in enumerate(self.components):
 
             component.objects.sort(key=lambda x: x.name)
+            component.index_offset = index_offset
 
             for temp_object in component.objects:
                 temp_obj = temp_object.object
@@ -364,12 +382,12 @@ class ObjectMerger:
                 # Normalize UV/Color layer names by slot order on temp objects only.
                 # This keeps export deterministic even if source layer names are arbitrary.
                 self.rename_temp_attribute_layers_by_slot(temp_obj)
-                if self.vg_remap_mode == VgRemapMode.MergedToComponent:
+                if _enum_equal(self.vg_remap_mode, VgRemapMode.MergedToComponent):
                     used_ids = self._collect_used_vg_ids(temp_obj)
                     if used_ids:
                         component_used_vg_ids.setdefault(component_id, set()).update(used_ids)
                     self._apply_merged_to_component_remap(temp_obj, component_id)
-                elif self.vg_remap_mode == VgRemapMode.ComponentToMerged:
+                elif _enum_equal(self.vg_remap_mode, VgRemapMode.ComponentToMerged):
                     self._apply_component_to_merged_remap(temp_obj, component_id)
                 # Handle Vertex Groups
                 vertex_groups = get_vertex_groups(temp_obj)
@@ -377,7 +395,8 @@ class ObjectMerger:
                 if self.add_missing_vertex_groups:
                     fill_gaps_in_vertex_groups(self.context, temp_obj, internal_call=True)
                 # Remove ignored or unexpected vertex groups
-                if self.skeleton_type == SkeletonType.Merged:
+                ignore_list = []
+                if _enum_equal(self.skeleton_type, SkeletonType.Merged):
                     # Exclude VGs with 'ignore' tag or with higher VG id than total VG count from Metadata.ini
                     total_vg_count = sum([component.vg_count for component in self.extracted_object.components])
                     ignore_list = [
@@ -388,7 +407,7 @@ class ObjectMerger:
                             or (self._get_vg_id(vg) if self.vg_remap_mode else vg.index) >= total_vg_count
                         )
                     ]
-                elif self.skeleton_type == SkeletonType.PerComponent:
+                elif _enum_equal(self.skeleton_type, SkeletonType.PerComponent):
                     # Exclude VGs with 'ignore' tag or with higher id VG count from Metadata.ini for current component
                     extracted_component = self.extracted_object.components[component_id]
                     total_vg_count = len(extracted_component.vg_map)
@@ -416,7 +435,7 @@ class ObjectMerger:
                 component.vertex_count += temp_object.vertex_count
                 component.index_count += temp_object.index_count
 
-        if self.vg_remap_mode == VgRemapMode.MergedToComponent and component_used_vg_ids:
+        if _enum_equal(self.vg_remap_mode, VgRemapMode.MergedToComponent) and component_used_vg_ids:
             conflicts = {}
             for component_id, used_ids in component_used_vg_ids.items():
                 for vg_id in used_ids:

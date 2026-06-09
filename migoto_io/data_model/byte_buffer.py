@@ -32,6 +32,27 @@ class Semantic(Enum):
         return f'{self.value}'
 
 
+def enum_identity(value):
+    return getattr(value, 'value', getattr(value, 'name', value))
+
+
+def enum_equal(lhs, rhs):
+    if lhs == rhs:
+        return True
+    if isinstance(lhs, Enum) and isinstance(rhs, Enum):
+        if lhs.__class__.__name__ == rhs.__class__.__name__:
+            return lhs.name == rhs.name or lhs.value == rhs.value
+    return enum_identity(lhs) == enum_identity(rhs)
+
+
+def is_abstract_semantic(value):
+    return hasattr(value, 'enum') and hasattr(value, 'index') and not hasattr(value, 'abstract')
+
+
+def is_buffer_semantic(value):
+    return all(hasattr(value, attr) for attr in ('abstract', 'format', 'stride', 'offset'))
+
+
 @dataclass
 class AbstractSemantic:
     enum: Semantic
@@ -42,7 +63,10 @@ class AbstractSemantic:
         self.index = semantic_index
 
     def __hash__(self):
-        return hash((self.enum, self.index))
+        return hash((enum_identity(self.enum), self.index))
+
+    def __eq__(self, other):
+        return hasattr(other, 'enum') and hasattr(other, 'index') and enum_equal(self.enum, other.enum) and self.index == other.index
 
     def __str__(self):
         return f'{self.enum}_{self.index}'
@@ -54,7 +78,7 @@ class AbstractSemantic:
         name = self.enum.value
         if self.index > 0:
             name += str(self.index)
-        if self.enum == Semantic.TexCoord:
+        if enum_equal(self.enum, Semantic.TexCoord):
             name += '.xy'
         return name
 
@@ -75,6 +99,12 @@ class BufferSemantic:
         
     def __hash__(self):
         return hash((self.abstract, self.format.format, self.stride, self.offset))
+
+    def __eq__(self, other):
+        return all(hasattr(other, attr) for attr in ('abstract', 'format', 'stride', 'offset')) and \
+            self.abstract == other.abstract and \
+            getattr(self.format, 'format', self.format) == getattr(other.format, 'format', other.format) and \
+            self.stride == other.stride and self.offset == other.offset
 
     def __repr__(self):
         return f'{self.abstract} ({self.format.format} stride={self.stride} offset={self.offset})'
@@ -131,6 +161,8 @@ class BufferLayout:
                 semantic.abstract.index = groups[semantic]
 
     def get_element(self, abstract: AbstractSemantic):
+        if is_buffer_semantic(abstract):
+            abstract = abstract.abstract
         for element in self.semantics:
             if abstract == element.abstract:
                 return element
@@ -326,30 +358,26 @@ class BufferElement:
         self.layout = self.buffer.layout
 
     def get_bytes(self, semantic, return_buffer_semantic=False):
-        if isinstance(semantic, AbstractSemantic):
-            semantic = self.layout.get_element(semantic)
+        semantic = self.buffer.resolve_semantic(semantic)
         byte_offset = self.index * semantic.stride
-        data_bytes = self.buffer.data[semantic][byte_offset : byte_offset + semantic.stride]
+        data_bytes = self.buffer.data[self.buffer.get_data_key(semantic)][byte_offset : byte_offset + semantic.stride]
         if not return_buffer_semantic:
             return data_bytes
         else:
             return data_bytes, semantic
 
     def set_bytes(self, semantic, data_bytes):
-        if isinstance(semantic, AbstractSemantic):
-            semantic = self.layout.get_element(semantic)
+        semantic = self.buffer.resolve_semantic(semantic)
         byte_offset = self.index * semantic.stride
-        self.buffer.data[semantic][byte_offset: byte_offset + semantic.stride] = data_bytes
+        self.buffer.data[self.buffer.get_data_key(semantic)][byte_offset: byte_offset + semantic.stride] = data_bytes
 
     def get_value(self, semantic):
-        if isinstance(semantic, AbstractSemantic):
-            semantic = self.layout.get_element(semantic)
+        semantic = self.buffer.resolve_semantic(semantic)
         data_bytes = self.get_bytes(semantic)
         return semantic.format.decoder(data_bytes).tolist()
 
     def set_value(self, semantic, value):
-        if isinstance(semantic, AbstractSemantic):
-            semantic = self.layout.get_element(semantic)
+        semantic = self.buffer.resolve_semantic(semantic)
         self.set_bytes(semantic, semantic.format.encoder(value).tobytes())
 
     def get_all_bytes(self):
@@ -373,7 +401,7 @@ class ByteBuffer:
     def validate(self):
         result = {}
         for semantic in self.layout.semantics:
-            result[semantic] = len(self.data[semantic]) / semantic.stride
+            result[semantic] = len(self.data[self.get_data_key(semantic)]) / semantic.stride
         if min(result.values()) != max(result.values()):
             result = ', '.join([f'{k.abstract}: {v}' for k, v in result.items()])
             raise ValueError(f'elements count mismatch in buffers: {result}')
@@ -385,6 +413,27 @@ class ByteBuffer:
         self.layout = layout
         if len(self.data) != 0:
             self.validate()
+
+    def resolve_semantic(self, semantic):
+        if is_abstract_semantic(semantic):
+            semantic = self.layout.get_element(semantic)
+        elif is_buffer_semantic(semantic):
+            layout_semantic = self.layout.get_element(semantic.abstract)
+            if layout_semantic is not None:
+                semantic = layout_semantic
+        if semantic is None:
+            raise KeyError('semantic not found in buffer layout')
+        return semantic
+
+    def get_data_key(self, semantic):
+        if semantic in self.data:
+            return semantic
+        for key in self.data:
+            if key == semantic:
+                return key
+            if is_buffer_semantic(key) and is_buffer_semantic(semantic) and key.abstract == semantic.abstract:
+                return key
+        raise KeyError(semantic)
 
     def from_bytes(self, data_bytes):
         if self.layout.force_stride:
@@ -417,8 +466,9 @@ class ByteBuffer:
         if num_elements <= 0:
             raise ValueError(f'cannot extend buffer by {num_elements} elements')
         for semantic in self.layout.semantics:
-            if semantic in self.data:
-                self.data[semantic].extend(bytearray(num_elements * semantic.stride))
+            data_key = self.get_data_key(semantic) if any(key == semantic for key in self.data) else None
+            if data_key is not None:
+                self.data[data_key].extend(bytearray(num_elements * semantic.stride))
             else:
                 self.data[semantic] = bytearray(num_elements * semantic.stride)
         self.validate()
@@ -428,7 +478,7 @@ class ByteBuffer:
         for semantic in self.layout.semantics:
             byte_offset = offset * semantic.stride
             byte_count = element_count * semantic.stride
-            fragment.data[semantic] = self.data[semantic][byte_offset:byte_offset+byte_count]
+            fragment.data[semantic] = self.data[self.get_data_key(semantic)][byte_offset:byte_offset+byte_count]
         fragment.validate()
         return fragment
 
@@ -449,39 +499,39 @@ class ByteBuffer:
         # Import data bytes
         for src_semantic, dst_semantic in semantic_map.items():
             if src_semantic.format == dst_semantic.format:
-                self.data[dst_semantic] = src_byte_buffer.data[src_semantic]
+                self.data[dst_semantic] = src_byte_buffer.data[src_byte_buffer.get_data_key(src_semantic)]
             else:
-                src_values = src_semantic.format.decoder(src_byte_buffer.data[src_semantic]).tolist()
+                src_values = src_semantic.format.decoder(src_byte_buffer.data[src_byte_buffer.get_data_key(src_semantic)]).tolist()
                 self.data[dst_semantic] = dst_semantic.format.encoder(src_values).tobytes()
 
         self.validate()
 
     def get_bytes(self, semantic=None):
         if semantic is None:
-            data_bytes = bytearray()
-            for element_id in range(self.num_elements):
-                data_bytes.extend(self.get_element(element_id).get_all_bytes())
+            data_bytes = bytearray(self.num_elements * self.layout.stride)
+            for semantic in self.layout.semantics:
+                semantic_data = self.data[self.get_data_key(semantic)]
+                for element_id in range(self.num_elements):
+                    src_offset = element_id * semantic.stride
+                    dst_offset = element_id * self.layout.stride + semantic.offset
+                    data_bytes[dst_offset:dst_offset + semantic.stride] = semantic_data[src_offset:src_offset + semantic.stride]
             return data_bytes
         else:
-            if isinstance(semantic, AbstractSemantic):
-                semantic = self.layout.get_element(semantic)
-            return self.data[semantic]
+            semantic = self.resolve_semantic(semantic)
+            return self.data[self.get_data_key(semantic)]
 
     def get_values(self, semantic):
-        if isinstance(semantic, AbstractSemantic):
-            semantic = self.layout.get_element(semantic)
+        semantic = self.resolve_semantic(semantic)
         data_bytes = self.get_bytes(semantic)
         return semantic.format.decoder(data_bytes).tolist()
 
     def set_bytes(self, semantic, data_bytes):
-        if isinstance(semantic, AbstractSemantic):
-            semantic = self.layout.get_element(semantic)
-        self.data[semantic] = data_bytes
+        semantic = self.resolve_semantic(semantic)
+        self.data[self.get_data_key(semantic) if any(key == semantic for key in self.data) else semantic] = data_bytes
         self.validate()
 
     def set_values(self, semantic, values):
-        if isinstance(semantic, AbstractSemantic):
-            semantic = self.layout.get_element(semantic)
+        semantic = self.resolve_semantic(semantic)
         self.set_bytes(semantic, semantic.format.encoder(values).tobytes())
 
     @staticmethod
@@ -497,7 +547,7 @@ class ByteBuffer:
             for src_semantic, dst_semantic in semantic_map.items():
                 # Ensure source semantic location in source buffer
                 src_semantic = src_semantic
-                if isinstance(src_semantic, AbstractSemantic):
+                if is_abstract_semantic(src_semantic):
                     src_semantic = src_byte_buffer.layout.get_element(src_semantic)
                 if src_semantic not in src_byte_buffer.layout.semantics:
                     if not skip_missing:
@@ -505,7 +555,7 @@ class ByteBuffer:
                     continue
                 # Ensure destination semantic location in destination buffer
                 dst_semantic = src_semantic
-                if isinstance(src_semantic, AbstractSemantic):
+                if is_abstract_semantic(dst_semantic):
                     dst_semantic = dst_byte_buffer.layout.get_element(dst_semantic)
                 if dst_semantic not in dst_byte_buffer.layout.semantics:
                     if not skip_missing:

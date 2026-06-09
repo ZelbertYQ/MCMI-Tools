@@ -1,7 +1,6 @@
-import time
-
 from typing import Union, List, Dict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import Enum
 
 from ..data_model.byte_buffer import ByteBuffer, BufferLayout, IndexBuffer
 
@@ -31,18 +30,32 @@ class ResourceCollector:
     shader_resources: Dict[str, DataMap]
     call_branches: Dict[str, ShaderCallBranch] = None
     cache: Dict[str, Union[ByteBuffer, IndexBuffer]] = None
+    shader_resource_sources: Dict[str, List[tuple]] = field(init=False)
+
+    @staticmethod
+    def enum_equal(lhs, rhs):
+        if lhs == rhs:
+            return True
+        if isinstance(lhs, Enum) and isinstance(rhs, Enum):
+            if lhs.__class__.__name__ == rhs.__class__.__name__:
+                return lhs.name == rhs.name or lhs.value == rhs.value
+        return False
 
     def __post_init__(self):
         self.cache = {}
+        self.shader_resource_sources = {}
+        for resource_tag, data_map in self.shader_resources.items():
+            for source in data_map.sources:
+                self.shader_resource_sources.setdefault(source.shader_id, []).append((resource_tag, data_map, source))
+
         for shader_id, shader_call_branch in self.call_branches.items():
             self.collect_branch_data(shader_id, shader_call_branch)
 
     def collect_branch_data(self, shader_id, shader_call_branch):
+        resource_sources = self.shader_resource_sources.get(shader_id, [])
         for branch_call in shader_call_branch.calls:
-            for resource_tag, data_map in self.shader_resources.items():
-                for source in data_map.sources:
-                    if source.shader_id == shader_id:
-                        self.collect_branch_call_resource(branch_call, resource_tag, source, data_map.layout)
+            for resource_tag, data_map, source in resource_sources:
+                self.collect_branch_call_resource(branch_call, resource_tag, source, data_map.layout)
         for nested_branch in shader_call_branch.nested_branches:
             self.collect_branch_data(nested_branch.shader_id, nested_branch)
 
@@ -53,7 +66,7 @@ class ResourceCollector:
         }
         if source.slot_id is not None:
             filter_attributes['slot_id'] = source.slot_id
-        if source.shader_type != ShaderType.Empty:
+        if not self.enum_equal(source.shader_type, ShaderType.Empty):
             filter_attributes['slot_shader_type'] = source.shader_type
 
         resource = branch_call.call.get_filtered_resource(filter_attributes)
@@ -67,7 +80,7 @@ class ResourceCollector:
         if layout is not None:
 
             # Contents of .buf IB isn't always accurate, so it can make sense to use .txt instead
-            if source.slot_type == SlotType.IndexBuffer and source.file_ext == 'txt':
+            if self.enum_equal(source.slot_type, SlotType.IndexBuffer) and source.file_ext == 'txt':
                 txt_path = resource.path.replace('.buf', '.txt')
                 resource = ResourceDescriptor(txt_path)
 
@@ -76,7 +89,7 @@ class ResourceCollector:
             cached_resource = self.cache.get(cache_id, None)
 
             if cached_resource is None:
-                if source.slot_type == SlotType.IndexBuffer and source.file_ext == 'txt':
+                if self.enum_equal(source.slot_type, SlotType.IndexBuffer) and source.file_ext == 'txt':
                     with open(resource.path, 'r') as f:
                         resource = IndexBuffer(layout, f)
                 else:
@@ -210,4 +223,3 @@ class ResourceCollector:
     #         ))
     #
     #     return draw_resources
-

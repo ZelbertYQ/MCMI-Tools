@@ -2,6 +2,7 @@
 from typing import Union, List, Dict
 
 from dataclasses import dataclass
+from enum import Enum
 
 from ..data_model.byte_buffer import ByteBuffer, IndexBuffer
 
@@ -54,6 +55,15 @@ class CallsCollector:
     def __post_init__(self):
         self.cache = {}
         self.call_branches = self.get_call_branches()
+
+    @staticmethod
+    def enum_equal(lhs, rhs):
+        if lhs == rhs:
+            return True
+        if isinstance(lhs, Enum) and isinstance(rhs, Enum):
+            if lhs.__class__.__name__ == rhs.__class__.__name__:
+                return lhs.name == rhs.name or lhs.value == rhs.value
+        return False
 
     def get_call_branches(self):
         call_branches = {}
@@ -167,7 +177,7 @@ class CallsCollector:
                 }
                 if output_slot.slot_id is not None:
                     output_filter_attributes['slot_id'] = output_slot.slot_id
-                if output_slot.shader_type != ShaderType.Empty:
+                if not self.enum_equal(output_slot.shader_type, ShaderType.Empty):
                     output_filter_attributes['slot_shader_type'] = output_slot.shader_type
 
                 output_resource = branch_call.call.get_filtered_resource(output_filter_attributes)
@@ -234,16 +244,14 @@ class CallsCollector:
         }
         if slot.slot_id is not None:
             input_filter_attributes['slot_id'] = slot.slot_id
-        if slot.shader_type != ShaderType.Empty:
+        if not self.enum_equal(slot.shader_type, ShaderType.Empty):
             input_filter_attributes['slot_shader_type'] = slot.shader_type
 
-        slot_resources = DictFilter(Filter(
-            attributes=input_filter_attributes,
-            dictionaries=[self.dump.resources]
-        )).filtered_dict
+        slot_resources = {
+            key: resource for key, resource in self.dump.resources.items()
+            if resource.call.matches_filter_attributes(resource, input_filter_attributes)
+        }
 
         self.cache[hash] = slot_resources
 
         return slot_resources
-
-

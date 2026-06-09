@@ -38,16 +38,31 @@ class FrameDumpCall:
                 lambda data: DrawIndexed(int(data[0]), int(data[1]), int(data[2]))
             ),
         }
+        self.extra_patterns = {
+            CallParameters.DrawIndexed: (
+                re.compile(r'^DrawIndexedInstanced\(IndexCountPerInstance:(\d+), InstanceCount:\d+, StartIndexLocation:(\d+), BaseVertexLocation:(\d+), StartInstanceLocation:\d+\)'),
+                lambda data: DrawIndexed(int(data[0]), int(data[1]), int(data[2]))
+            ),
+        }
 
     def import_data(self, raw_log_entry):
         raw_log_entry = ' '.join(raw_log_entry)
-        for name, (pattern, decoder) in self.patterns.items():
+        for name, (pattern, decoder) in list(self.patterns.items()) + list(self.extra_patterns.items()):
             result = pattern.findall(raw_log_entry)
             if len(result) == 0:
                 continue
             if len(result) != 1:
                 raise ValueError(f'More than 1 data entries for pattern {pattern} in {raw_log_entry}')
             self.parameters[name] = decoder(result[0])
+
+    def has_parameter(self, parameter):
+        return any(getattr(key, 'name', None) == getattr(parameter, 'name', None) for key in self.parameters)
+
+    def get_parameter(self, parameter):
+        for key, value in self.parameters.items():
+            if getattr(key, 'name', None) == getattr(parameter, 'name', None):
+                return value
+        raise KeyError(parameter)
 
 
 class FrameDumpLog:
@@ -88,4 +103,3 @@ class FrameDumpLog:
                     raw_log_entry.append(line.strip())
             # Handle last line of the log
             call.import_data(raw_log_entry)
-

@@ -290,6 +290,70 @@ class CallDescriptor:
             resource.hash_data()
 
     def get_filtered_resources(self, filter_attributes):
+        result = {}
+        for key, resource in self.resources.items():
+            if self.matches_filter_attributes(resource, filter_attributes):
+                result[key] = resource
+        return result
+
+    @classmethod
+    def matches_filter_attributes(cls, resource, filter_attributes):
+        for attribute, expected in filter_attributes.items():
+            if not cls.matches_filter_attribute(resource, attribute, expected):
+                return False
+        return True
+
+    @classmethod
+    def matches_filter_attribute(cls, resource, attribute, expected):
+        must_match = True
+        if attribute.startswith('!'):
+            must_match = False
+            attribute = attribute[1:]
+
+        parts = attribute.split(':')
+        if len(parts) == 1:
+            value = getattr(resource, parts[0])
+            detected = cls.has_filter_value(value, expected)
+        elif len(parts) == 2:
+            values = getattr(resource, parts[0])
+            nested_attribute = parts[1]
+            nested_must_match = True
+            if nested_attribute.startswith('!'):
+                nested_must_match = False
+                nested_attribute = nested_attribute[1:]
+
+            detected = False
+            items = values.items() if isinstance(values, dict) else enumerate(values)
+            for key, value in items:
+                if nested_attribute == '__key__':
+                    nested_detected = cls.has_filter_value(key, expected)
+                else:
+                    nested_detected = cls.has_filter_value(getattr(value, nested_attribute), expected)
+
+                if nested_detected == nested_must_match:
+                    detected = True
+                    break
+        else:
+            raise ValueError(f'Invalid filter attribute "{attribute}": more than one ":" is not supported!')
+
+        return detected == must_match
+
+    @classmethod
+    def has_filter_value(cls, value, expected):
+        if not isinstance(expected, list):
+            expected = [expected]
+        return any(cls.values_equal(value, item) for item in expected)
+
+    @staticmethod
+    def values_equal(lhs, rhs):
+        if lhs == rhs:
+            return True
+        if isinstance(lhs, Enum) and isinstance(rhs, Enum):
+            if lhs.__class__.__name__ == rhs.__class__.__name__:
+                return lhs.name == rhs.name or lhs.value == rhs.value
+        return False
+
+    def get_filtered_resources_legacy(self, filter_attributes):
         resource_filter = Filter(
             condition=FilterCondition.AND,
             attributes_condition=FilterCondition.AND,
@@ -309,6 +373,15 @@ class CallDescriptor:
             return None
         else:
             raise ValueError(f'Found more than 1 resource with provided attributes!')
+
+    def has_parameter(self, parameter):
+        return any(getattr(key, 'name', None) == getattr(parameter, 'name', None) for key in self.parameters)
+
+    def get_parameter(self, parameter):
+        for key, value in self.parameters.items():
+            if getattr(key, 'name', None) == getattr(parameter, 'name', None):
+                return value
+        raise KeyError(parameter)
 
     def __repr__(self):
         return f'{self.id}, {", ".join(self.shaders.keys())}'

@@ -6,6 +6,7 @@ import json
 import shutil
 import traceback
 import struct
+import subprocess
 
 from pathlib import Path
 from typing import Dict
@@ -21,9 +22,10 @@ from ..migoto_io.data_model.byte_buffer import BufferLayout, BufferSemantic, Abs
 
 from ..migoto_io.dump_parser.filename_parser import ShaderType, SlotType, SlotId
 from ..migoto_io.dump_parser.dump_parser import Dump
-from ..migoto_io.dump_parser.resource_collector import Source
-from ..migoto_io.dump_parser.calls_collector import ShaderMap, Slot
+from ..migoto_io.dump_parser.resource_collector import Source, ResourceCollector
+from ..migoto_io.dump_parser.calls_collector import ShaderMap, Slot, BranchCall, ShaderCallBranch
 from ..migoto_io.dump_parser.data_collector import DataMap, DataCollector
+from ..migoto_io.dump_parser.log_parser import CallParameters
 
 from .data_extractor import DataExtractor
 from .shapekey_builder import ShapeKeyBuilder
@@ -38,6 +40,16 @@ class Configuration:
     shader_data_pattern: Dict[str, ShaderMap]
     shader_resources: Dict[str, DataMap]
     output_vb_layout: BufferLayout
+
+
+@dataclass
+class ExtractFrameDataResult:
+    output_builder: OutputBuilder
+    written_object_folders: Dict[str, str]
+
+    @property
+    def objects(self):
+        return self.output_builder.objects
 
 
 # In WuWa VB is dynamically calculated by dedicated compute shaders (aka Pose CS)
@@ -403,6 +415,192 @@ def get_image_size(image_path: Path):
     return None, None
 
 
+DXGI_FORMAT_NAMES = {
+    2: 'R32G32B32A32_FLOAT',
+    3: 'R32G32B32A32_UINT',
+    10: 'R16G16B16A16_FLOAT',
+    11: 'R16G16B16A16_UNORM',
+    28: 'R8G8B8A8_UNORM',
+    29: 'R8G8B8A8_UNORM_SRGB',
+    71: 'BC1_UNORM',
+    72: 'BC1_UNORM_SRGB',
+    74: 'BC2_UNORM',
+    75: 'BC2_UNORM_SRGB',
+    77: 'BC3_UNORM',
+    78: 'BC3_UNORM_SRGB',
+    80: 'BC4_UNORM',
+    83: 'BC5_UNORM',
+    95: 'BC6H_UF16',
+    96: 'BC6H_SF16',
+    98: 'BC7_UNORM',
+    99: 'BC7_UNORM_SRGB',
+}
+
+
+DDS_FOURCC_FORMAT_NAMES = {
+    b'DXT1': 'BC1_UNORM',
+    b'DXT3': 'BC2_UNORM',
+    b'DXT5': 'BC3_UNORM',
+    b'ATI1': 'BC4_UNORM',
+    b'BC4U': 'BC4_UNORM',
+    b'ATI2': 'BC5_UNORM',
+    b'BC5U': 'BC5_UNORM',
+}
+
+
+def get_dds_texture_info(texture_path: Path):
+    try:
+        with open(texture_path, 'rb') as f:
+            header = f.read(148)
+        if len(header) < 128 or header[:4] != b'DDS ':
+            return {}
+
+        height = struct.unpack_from('<I', header, 12)[0]
+        width = struct.unpack_from('<I', header, 16)[0]
+        fourcc = header[84:88]
+        info = {'width': width, 'height': height}
+
+        if fourcc == b'DX10' and len(header) >= 148:
+            dxgi_format = struct.unpack_from('<I', header, 128)[0]
+            if dxgi_format in DXGI_FORMAT_NAMES:
+                info['format'] = DXGI_FORMAT_NAMES[dxgi_format]
+        elif fourcc in DDS_FOURCC_FORMAT_NAMES:
+            info['format'] = DDS_FOURCC_FORMAT_NAMES[fourcc]
+
+        return info
+    except Exception:
+        return {}
+
+
+def decode_subprocess_output(data):
+    if not data:
+        return ''
+    if isinstance(data, str):
+        return data
+    for encoding in ('utf-8', 'mbcs', 'cp936'):
+        try:
+            return data.decode(encoding)
+        except Exception:
+            pass
+    return data.decode('utf-8', errors='replace')
+
+
+def get_texture_info(texdiag_path, texture_path):
+    texture_path = Path(texture_path)
+    if texture_path.suffix.lower() == '.dds':
+        dds_info = get_dds_texture_info(texture_path)
+        if dds_info.get('width') and dds_info.get('height') and dds_info.get('format'):
+            return dds_info
+
+    if not Path(texdiag_path).is_file():
+        return get_dds_texture_info(texture_path) if texture_path.suffix.lower() == '.dds' else {}
+    try:
+        result = subprocess.run(
+            [str(texdiag_path), 'info', str(texture_path)],
+            capture_output=True,
+            timeout=30
+        )
+        info = {}
+        output = decode_subprocess_output(result.stdout)
+        for line in output.splitlines():
+            match = re.match(r'\s*(\S+(?:\s+\S+)?)\s*=\s*(.+)', line.strip())
+            if not match:
+                continue
+            key = match.group(1).strip()
+            value = match.group(2).strip()
+            if key == 'width':
+                info['width'] = int(value)
+            elif key == 'height':
+                info['height'] = int(value)
+            elif key == 'format':
+                info['format'] = value.replace('DXGI_FORMAT_', '')
+        if texture_path.suffix.lower() == '.dds':
+            dds_info = get_dds_texture_info(texture_path)
+            dds_info.update({key: value for key, value in info.items() if value})
+            return dds_info
+        return info
+    except Exception as e:
+        print(f'Warning: Failed to get texture info for {texture_path}: {e}')
+        return get_dds_texture_info(texture_path) if texture_path.suffix.lower() == '.dds' else {}
+
+
+def ensure_draw_vs_calls(frame_data: DataCollector, dump: Dump, shader_resources: Dict[str, DataMap]):
+    branch = frame_data.call_branches.get('DRAW_VS')
+    if branch is not None and len(branch.calls) > 0:
+        return
+
+    draw_sources = []
+    for resource_tag, data_map in shader_resources.items():
+        sources = [source for source in data_map.sources if source.shader_id == 'DRAW_VS']
+        if sources:
+            draw_sources.append((resource_tag, data_map, sources))
+
+    if not draw_sources:
+        return
+
+    resource_collector = ResourceCollector(shader_resources={}, call_branches={})
+    fallback_branch = ShaderCallBranch(shader_id='DRAW_VS', calls=[], nested_branches=[])
+    candidates = 0
+    skipped = 0
+    skipped_reasons = OrderedDict()
+
+    def note_skip(reason):
+        skipped_reasons[reason] = skipped_reasons.get(reason, 0) + 1
+
+    def enum_equal(lhs, rhs):
+        if lhs == rhs:
+            return True
+        if getattr(lhs.__class__, '__name__', None) == getattr(rhs.__class__, '__name__', None):
+            return getattr(lhs, 'name', None) == getattr(rhs, 'name', None) or getattr(lhs, 'value', None) == getattr(rhs, 'value', None)
+        return False
+
+    for call in sorted(dump.calls.values(), key=lambda c: int(c.id)):
+        if not call.has_parameter(CallParameters.DrawIndexed):
+            continue
+        if not any(enum_equal(shader.type, ShaderType.Vertex) for shader in call.shaders.values()):
+            continue
+
+        candidates += 1
+        branch_call = BranchCall(call=call, resources={})
+        missing = False
+
+        for resource_tag, data_map, sources in draw_sources:
+            collected = False
+            last_error = None
+            for source in sources:
+                try:
+                    resource_collector.collect_branch_call_resource(branch_call, resource_tag, source, data_map.layout)
+                    collected = resource_tag in branch_call.resources
+                    if collected:
+                        break
+                except Exception as e:
+                    last_error = e
+
+            if not collected and not all(source.ignore_missing for source in sources):
+                missing = True
+                note_skip(f'{resource_tag}: {last_error or "missing"}')
+                break
+
+        if missing:
+            skipped += 1
+            continue
+
+        fallback_branch.calls.append(branch_call)
+
+    if branch is None:
+        frame_data.call_branches['DRAW_VS'] = fallback_branch
+    else:
+        branch.calls = fallback_branch.calls
+
+    print(
+        f'DRAW_VS fallback: scanned {candidates} DrawIndexed VS calls, '
+        f'accepted {len(fallback_branch.calls)}, skipped {skipped}'
+    )
+    if len(fallback_branch.calls) == 0 and skipped_reasons:
+        for reason, count in list(skipped_reasons.items())[:10]:
+            print(f'DRAW_VS fallback skip x{count}: {reason}')
+
+
 def build_deduped_texture_info(dump_path: Path):
     deduped_texture_info = {}
     deduped_path = Path(dump_path) / 'deduped'
@@ -448,6 +646,14 @@ def export_bc7_srgb_textures(object_directory: Path, texture_format, enabled=Fal
             shutil.copyfile(source_texture_path, bc7_directory / source_texture_path.name)
 
 
+def _texture_format_from_info(texture_hash, deduped_texture_info):
+    info = deduped_texture_info.get(texture_hash.lower(), {})
+    formats = info.get('source_formats', [])
+    if not isinstance(formats, list) or len(formats) == 0:
+        return ''
+    return formats[0]
+
+
 def write_objects(output_directory, objects: Dict[str, ObjectData], allow_missing_shapekeys = False, deduped_texture_info=None):
     output_directory = Path(output_directory)
 
@@ -455,6 +661,13 @@ def write_objects(output_directory, objects: Dict[str, ObjectData], allow_missin
 
     if deduped_texture_info is None:
         deduped_texture_info = {}
+
+    def enum_equal(lhs, rhs):
+        if lhs == rhs:
+            return True
+        if getattr(lhs.__class__, '__name__', None) == getattr(rhs.__class__, '__name__', None):
+            return getattr(lhs, 'name', None) == getattr(rhs, 'name', None) or getattr(lhs, 'value', None) == getattr(rhs, 'value', None)
+        return False
 
     for object_hash, object_data in objects.items():
         object_name = object_hash
@@ -470,10 +683,12 @@ def write_objects(output_directory, objects: Dict[str, ObjectData], allow_missin
 
         textures = {}
         texture_usage = {}
+        shader_texture_usage = {}
         texture_format = {
             'version': 1,
             'textures': OrderedDict(),
         }
+        texture_metadata = {}
         
         for component_id, component in enumerate(object_data.components):
 
@@ -489,6 +704,7 @@ def write_objects(output_directory, objects: Dict[str, ObjectData], allow_missin
 
             # Write textures
             texture_usage[component_filename] = OrderedDict()
+            shader_texture_usage[component_filename] = OrderedDict()
             for texture in component.textures:
 
                 if texture.hash not in textures:
@@ -518,20 +734,39 @@ def write_objects(output_directory, objects: Dict[str, ObjectData], allow_missin
                     texture_usage[component_filename][slot] = []
                 shaders = '-'.join([shader.raw for shader in texture.shaders])
                 texture_usage[component_filename][slot].append(f'{texture.hash}-{shaders}')
+
+                vs_ref = next((s for s in texture.shaders if enum_equal(s.type, ShaderType.Vertex)), None)
+                ps_ref = next((s for s in texture.shaders if enum_equal(s.type, ShaderType.Pixel)), None)
+                vs_key = vs_ref.raw if vs_ref else ''
+                ps_key = ps_ref.raw if ps_ref else ''
+                if vs_key not in shader_texture_usage[component_filename]:
+                    shader_texture_usage[component_filename][vs_key] = OrderedDict()
+                if ps_key not in shader_texture_usage[component_filename][vs_key]:
+                    shader_texture_usage[component_filename][vs_key][ps_key] = OrderedDict()
+                shader_texture_usage[component_filename][vs_key][ps_key][slot] = texture.hash
                 
             texture_usage[component_filename] = OrderedDict(sorted(texture_usage[component_filename].items()))
 
         for texture_hash, texture in textures.items():
+            texture_info_start = time.time()
             path = Path(texture['path'])
             output_texture_filename = f'{texture_hash}{path.suffix}'
             shutil.copyfile(path, object_directory / output_texture_filename)
             texture_hash_l = texture_hash.lower()
             deduped_info = deduped_texture_info.get(texture_hash_l, {})
-            width, height = get_image_size(object_directory / output_texture_filename)
+            output_texture_path = object_directory / output_texture_filename
+            texdiag_path = Path(__file__).resolve().parent.parent / 'DirectXTex' / 'texdiag.exe'
+            texdiag_info = get_texture_info(texdiag_path, output_texture_path)
+            width, height = texdiag_info.get('width'), texdiag_info.get('height')
+            if width is None or height is None:
+                width, height = get_image_size(output_texture_path)
+            source_formats = deduped_info.get('source_formats', [])
+            if texdiag_info.get('format') and texdiag_info['format'] not in source_formats:
+                source_formats = [texdiag_info['format']] + list(source_formats)
             texture_components = sorted([int(component_id) for component_id in set(texture['components'])])
             texture_format['textures'][texture_hash_l] = {
                 'file': output_texture_filename,
-                'source_formats': deduped_info.get('source_formats', []),
+                'source_formats': source_formats,
                 'size': [width, height] if width is not None and height is not None else [],
                 'components': texture_components,
                 'usage': sorted(texture.get('usage', []), key=lambda item: (
@@ -540,9 +775,35 @@ def write_objects(output_directory, objects: Dict[str, ObjectData], allow_missin
                     item.get('slot_id') if item.get('slot_id') is not None else -1,
                 )),
             }
+            texture_metadata[texture_hash_l] = {
+                'format': source_formats[0] if source_formats else '',
+                'width': width or 0,
+                'height': height or 0,
+            }
+            elapsed = time.time() - texture_info_start
+            if elapsed > 1.0:
+                print(f'Warning: Texture metadata for {output_texture_filename} took {elapsed:.3f}s')
+
+        for component_key in shader_texture_usage:
+            for vs_key in shader_texture_usage[component_key]:
+                for ps_key in shader_texture_usage[component_key][vs_key]:
+                    for slot_key in shader_texture_usage[component_key][vs_key][ps_key]:
+                        hash_value = shader_texture_usage[component_key][vs_key][ps_key][slot_key]
+                        texture_info = texture_format['textures'].get(hash_value.lower(), {})
+                        metadata = texture_metadata.get(hash_value.lower(), {})
+                        shader_texture_usage[component_key][vs_key][ps_key][slot_key] = {
+                            'filename': texture_info.get('file', ''),
+                            'hash': hash_value,
+                            'format': metadata.get('format', _texture_format_from_info(hash_value, deduped_texture_info)),
+                            'width': metadata.get('width', 0),
+                            'height': metadata.get('height', 0),
+                        }
             
         with open(object_directory / f'TextureUsage.json', "w") as f:
             f.write(json.dumps(texture_usage, indent=4))
+
+        with open(object_directory / f'ShaderTextureUsage.json', "w") as f:
+            f.write(json.dumps(shader_texture_usage, indent=4))
 
         with open(object_directory / f'Metadata.json', "w") as f:
             f.write(object_data.metadata)
@@ -555,6 +816,13 @@ def write_objects(output_directory, objects: Dict[str, ObjectData], allow_missin
 def extract_frame_data(cfg):
 
     start_time = time.time()
+    last_stage_time = start_time
+
+    def trace_stage(stage_name):
+        nonlocal last_stage_time
+        now = time.time()
+        print(f'Extract stage {stage_name}: {now - last_stage_time:.3f}s (total {now - start_time:.3f}s)')
+        last_stage_time = now
 
     dump_path = resolve_path(cfg.frame_dump_folder)
 
@@ -572,6 +840,8 @@ def extract_frame_data(cfg):
         dump = Dump(
             dump_directory=dump_path
         )
+        print(f'Frame dump indexed: {len(dump.resources)} resources, {len(dump.calls)} resource calls, {len(dump.log.calls)} log calls')
+        trace_stage('Dump')
 
         # Get data view from dump data model
         frame_data = DataCollector(
@@ -579,16 +849,23 @@ def extract_frame_data(cfg):
             shader_data_pattern=configuration.shader_data_pattern,
             shader_resources=configuration.shader_resources
         )
+        trace_stage('DataCollector')
+
+        ensure_draw_vs_calls(frame_data, dump, configuration.shader_resources)
+        trace_stage('DRAW_VS fallback')
 
         # Extract mesh objects data from data view
         data_extractor = DataExtractor(
             call_branches=frame_data.call_branches
         )
+        print(f'Data extracted: {len(data_extractor.draw_data)} draw entries, {len(data_extractor.shape_key_data)} shapekey sets')
+        trace_stage('DataExtractor')
 
         # Build shape keys index from byte buffers
         shapekeys = ShapeKeyBuilder(
             shapekey_data=data_extractor.shape_key_data
         )
+        trace_stage('ShapeKeyBuilder')
 
         # Build components from byte buffers
         component_builder = ComponentBuilder(
@@ -597,6 +874,7 @@ def extract_frame_data(cfg):
             shapekeys=shapekeys.shapekeys,
             draw_data=data_extractor.draw_data
         )
+        trace_stage('ComponentBuilder')
 
         # Build output data object
         output_builder = OutputBuilder(
@@ -609,6 +887,7 @@ def extract_frame_data(cfg):
                 exclude_hashes=['af26db30', '1320a071', '10d7937d', '87505b2b'] if cfg.skip_known_cubemap_textures else []
             )
         )
+        trace_stage('OutputBuilder')
 
     except Exception:
         if collect_on_error:
@@ -635,18 +914,30 @@ def extract_frame_data(cfg):
             objects_to_write = {k: v for k, v in output_builder.objects.items() if k == target_vb_hash}
     else:
         objects_to_write = output_builder.objects
+    trace_stage('HashFilter')
 
     deduped_texture_info = build_deduped_texture_info(dump_path)
-    write_objects(resolve_path(cfg.extract_output_folder), objects_to_write, cfg.allow_missing_shapekeys, deduped_texture_info)
+    trace_stage('DedupedTextureInfo')
+
+    extract_output_path = resolve_path(cfg.extract_output_folder)
+    write_objects(extract_output_path, objects_to_write, cfg.allow_missing_shapekeys, deduped_texture_info)
+    trace_stage('WriteObjects')
+
+    written_object_folders = {
+        vb_hash: str((extract_output_path / vb_hash).resolve())
+        for vb_hash, object_data in objects_to_write.items()
+        if cfg.allow_missing_shapekeys or object_data.shapekeys.shapekey_offsets
+    }
 
     if collect_on_error:
-        output_dir_path = Path(resolve_path(cfg.extract_output_folder))
+        output_dir_path = Path(extract_output_path)
         for vb_hash in objects_to_write:
             collect_raw_resources(output_dir_path, data_extractor, vb_hash, dump_path)
+        trace_stage('CollectRawResources')
 
     print(f"Execution time: %s seconds" % (time.time() - start_time))
 
-    return output_builder
+    return ExtractFrameDataResult(output_builder, written_object_folders)
 
 
 def get_dir_path():

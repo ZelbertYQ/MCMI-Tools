@@ -47,6 +47,18 @@ global $mod_enabled = 0
 global $object_detected = 0
 {{note("Used to pass current merge status to CommandListMergeSkeleton and get resulting merge status")}}
 global $merge_status_id = 0
+{%- if cfg.texture_mode == 'SLOT_SIMPLE' or cfg.texture_mode == 'SLOT_COMPLEX' %}
+global $mcmi_slot_probe = -1
+global $mcmi_slot_ps_t0 = 0
+global $mcmi_slot_ps_t1 = 0
+global $mcmi_slot_ps_t2 = 0
+global $mcmi_slot_ps_t3 = 0
+global $mcmi_slot_ps_t4 = 0
+global $mcmi_slot_ps_t5 = 0
+global $mcmi_slot_ps_t6 = 0
+global $mcmi_slot_ps_t7 = 0
+global $mcmi_slot_ps_t8 = 0
+{% endif %}
 {{note("Stores skeleton merging status of this component for current frame:")}}
 {{note("0 - neither regular nor special skeleton bones data was collected for this component")}}
 {{note("1 - only regular skeleton bones data was collected for this component")}}
@@ -337,6 +349,36 @@ endif
 {{note("Overrides textures via triggering [ResourceTextureX] sections by calling chechtextureoverride on ps-t slots")}}
 [CommandListTriggerResourceOverrides]
 {{note("Trigger texture sections to replace texture with matching hash")}}
+{%- if cfg.texture_mode == 'SLOT_SIMPLE' or cfg.texture_mode == 'SLOT_COMPLEX' %}
+$mcmi_slot_ps_t0 = 0
+$mcmi_slot_ps_t1 = 0
+$mcmi_slot_ps_t2 = 0
+$mcmi_slot_ps_t3 = 0
+$mcmi_slot_ps_t4 = 0
+$mcmi_slot_ps_t5 = 0
+$mcmi_slot_ps_t6 = 0
+$mcmi_slot_ps_t7 = 0
+$mcmi_slot_ps_t8 = 0
+$mcmi_slot_probe = 0
+CheckTextureOverride = ps-t0
+$mcmi_slot_probe = 1
+CheckTextureOverride = ps-t1
+$mcmi_slot_probe = 2
+CheckTextureOverride = ps-t2
+$mcmi_slot_probe = 3
+CheckTextureOverride = ps-t3
+$mcmi_slot_probe = 4
+CheckTextureOverride = ps-t4
+$mcmi_slot_probe = 5
+CheckTextureOverride = ps-t5
+$mcmi_slot_probe = 6
+CheckTextureOverride = ps-t6
+$mcmi_slot_probe = 7
+CheckTextureOverride = ps-t7
+$mcmi_slot_probe = 8
+CheckTextureOverride = ps-t8
+$mcmi_slot_probe = -1
+{%- else %}
 CheckTextureOverride = ps-t0
 CheckTextureOverride = ps-t1
 CheckTextureOverride = ps-t2
@@ -346,6 +388,7 @@ CheckTextureOverride = ps-t5
 CheckTextureOverride = ps-t6
 CheckTextureOverride = ps-t7
 CheckTextureOverride = ps-t8
+{%- endif %}
 {{note("Trigger callbacks on bone data CBs to assign them filter_index")}}
 {{note("These buffers cannot be replaced directly via `this` as their hash is widely used by many objects")}}
 CheckTextureOverride = vs-cb3
@@ -458,13 +501,40 @@ if $mod_enabled
         run = CommandListTriggerResourceOverrides
         {{note("Do by-slot resource overrides")}}
         run = CommandListOverrideSharedResources
+        {%- if cfg.texture_mode == 'SLOT_SIMPLE' and merged_object.components[loop.index0].material %}
+        {%- for node_group in merged_object.components[loop.index0].material.node_groups %}
+        if {{ node_group.shader_condition }} && {%- for input in node_group.inputs %} {{input.slot_var}} == {{input.filter_index}} && {%- endfor %} 1
+            {%- for input in node_group.inputs %}
+            {{input.slot}} = ref ResourceTexture{{ input.resource_name }}
+            {%- endfor %}
+        endif
+        {%- endfor %}
+        {%- endif %}
     {%- for obj in merged_object.components[loop.index0].objects %}
         ; Draw {{ obj.name }}
-		{%- if cfg.use_ini_toggles %}
+		{% if cfg.use_ini_toggles -%}
         if {{ formatter.format_ini_drawvar(obj.name) }}
+            {%- if cfg.texture_mode == 'SLOT_COMPLEX' and obj.material %}
+            {%- for node_group in obj.material.node_groups %}
+            if {{ node_group.shader_condition }} && {%- for input in node_group.inputs %} {{input.slot_var}} == {{input.filter_index}} && {%- endfor %} 1
+                {%- for input in node_group.inputs %}
+                {{input.slot}} = ref ResourceTexture{{ input.resource_name }}
+                {%- endfor %}
+            endif
+            {%- endfor %}
+            {%- endif %}
 			drawindexed = {{ obj.index_count }}, {{ obj.index_offset }}, 0
         endif
-		{%- else %}
+		{% else -%}
+        {%- if cfg.texture_mode == 'SLOT_COMPLEX' and obj.material %}
+        {%- for node_group in obj.material.node_groups %}
+        if {{ node_group.shader_condition }} && {%- for input in node_group.inputs %} {{input.slot_var}} == {{input.filter_index}} && {%- endfor %} 1
+            {%- for input in node_group.inputs %}
+            {{input.slot}} = ref ResourceTexture{{ input.resource_name }}
+            {%- endfor %}
+        endif
+        {%- endfor %}
+        {%- endif %}
         drawindexed = {{ obj.index_count }}, {{ obj.index_offset }}, 0
 		{%- endif %}
     {%- endfor %}
@@ -488,6 +558,109 @@ endif
 
 ; Shading: Textures -------------------------
 
+{%- if (cfg.texture_mode == 'SLOT_SIMPLE' or cfg.texture_mode == 'SLOT_COMPLEX') and slot_textures %}
+{%- for marker in slot_shader_markers %}
+[ShaderOverrideMCMISlot{{ marker.shader_type|upper }}{{ marker.shader_hash }}]
+hash = {{ marker.shader_hash }}
+filter_index = {{ marker.filter_index }}
+{%- endfor %}
+
+{%- for component in merged_object.components %}
+{%- set component_idx = loop.index0 %}
+{%- for slot_hash in component.slot_hashes %}
+
+[TextureOverrideComponent{{ component_idx }}SlotHash{{ slot_hash.slot|replace('-', '_') }}{{ slot_hash.hash }}]
+hash = {{ slot_hash.hash }}
+match_first_index = {{ extracted_object.components[component_idx].index_offset }}
+match_index_count = {{ extracted_object.components[component_idx].index_count }}
+match_priority = 200
+if $object_detected && $mod_enabled && $mcmi_slot_probe == {{ slot_hash.slot_id }} && {{ slot_hash.shader_condition }}
+    {{ slot_hash.slot_var }} = {{ slot_hash.filter_index }}
+endif
+{%- endfor %}
+{%- endfor %}
+{%- endif %}
+{%- if cfg.texture_mode == 'SLOT_SIMPLE' and slot_textures %}
+{%- for component in merged_object.components %}
+{%- set component_idx = loop.index0 %}
+{%- for mf in component.match_formats %}
+
+[TextureOverrideComponent{{ component_idx }}{{ mf.match_format.name }}]
+match_first_index = {{ extracted_object.components[component_idx].index_offset }}
+match_index_count = {{ extracted_object.components[component_idx].index_count }}
+match_priority = 100
+match_format = {{ mf.match_format.name }}
+if $object_detected && $mod_enabled && $mcmi_slot_probe == 0
+    $mcmi_slot_ps_t0 = {{ mf.filter_index }}
+elif $object_detected && $mod_enabled && $mcmi_slot_probe == 1
+    $mcmi_slot_ps_t1 = {{ mf.filter_index }}
+elif $object_detected && $mod_enabled && $mcmi_slot_probe == 2
+    $mcmi_slot_ps_t2 = {{ mf.filter_index }}
+elif $object_detected && $mod_enabled && $mcmi_slot_probe == 3
+    $mcmi_slot_ps_t3 = {{ mf.filter_index }}
+elif $object_detected && $mod_enabled && $mcmi_slot_probe == 4
+    $mcmi_slot_ps_t4 = {{ mf.filter_index }}
+elif $object_detected && $mod_enabled && $mcmi_slot_probe == 5
+    $mcmi_slot_ps_t5 = {{ mf.filter_index }}
+elif $object_detected && $mod_enabled && $mcmi_slot_probe == 6
+    $mcmi_slot_ps_t6 = {{ mf.filter_index }}
+elif $object_detected && $mod_enabled && $mcmi_slot_probe == 7
+    $mcmi_slot_ps_t7 = {{ mf.filter_index }}
+elif $object_detected && $mod_enabled && $mcmi_slot_probe == 8
+    $mcmi_slot_ps_t8 = {{ mf.filter_index }}
+endif
+{%- endfor %}
+{%- endfor %}
+
+{%- for texture in slot_textures %}
+
+[ResourceTexture{{ texture.resource_name }}]
+filename = Textures/{{ texture.dds_export_name }}
+{%- endfor %}
+{%- endif %}
+{%- if cfg.texture_mode == 'SLOT_COMPLEX' and slot_textures %}
+{%- for component in merged_object.components %}
+{%- set component_idx = loop.index0 %}
+{%- for mf in component.match_formats %}
+{%- if mf.match_formats is defined %}
+{%- for fmt in mf.match_formats %}
+
+[TextureOverrideComponent{{ component_idx }}{{ fmt.name }}]
+match_first_index = {{ extracted_object.components[component_idx].index_offset }}
+match_index_count = {{ extracted_object.components[component_idx].index_count }}
+match_priority = 100
+match_format = {{ fmt.name }}
+if $object_detected && $mod_enabled && $mcmi_slot_probe == 0
+    $mcmi_slot_ps_t0 = {{ mf.filter_index }}
+elif $object_detected && $mod_enabled && $mcmi_slot_probe == 1
+    $mcmi_slot_ps_t1 = {{ mf.filter_index }}
+elif $object_detected && $mod_enabled && $mcmi_slot_probe == 2
+    $mcmi_slot_ps_t2 = {{ mf.filter_index }}
+elif $object_detected && $mod_enabled && $mcmi_slot_probe == 3
+    $mcmi_slot_ps_t3 = {{ mf.filter_index }}
+elif $object_detected && $mod_enabled && $mcmi_slot_probe == 4
+    $mcmi_slot_ps_t4 = {{ mf.filter_index }}
+elif $object_detected && $mod_enabled && $mcmi_slot_probe == 5
+    $mcmi_slot_ps_t5 = {{ mf.filter_index }}
+elif $object_detected && $mod_enabled && $mcmi_slot_probe == 6
+    $mcmi_slot_ps_t6 = {{ mf.filter_index }}
+elif $object_detected && $mod_enabled && $mcmi_slot_probe == 7
+    $mcmi_slot_ps_t7 = {{ mf.filter_index }}
+elif $object_detected && $mod_enabled && $mcmi_slot_probe == 8
+    $mcmi_slot_ps_t8 = {{ mf.filter_index }}
+endif
+{%- endfor %}
+{%- endif %}
+{%- endfor %}
+{%- endfor %}
+
+{%- for texture in slot_textures %}
+
+[ResourceTexture{{ texture.resource_name }}]
+filename = Textures/{{ texture.dds_export_name }}
+{%- endfor %}
+{%- endif %}
+{%- if cfg.texture_mode == 'HASH' %}
 {%- for texture in textures %}
 
 [ResourceTexture-{{ texture.hash }}]
@@ -500,6 +673,7 @@ if $object_detected
     this = ResourceTexture-{{ texture.hash }}
 endif
 {%- endfor %}
+{%- endif %}
 
 {% if merged_object.shapekeys.vertex_count > 0 -%}
 ; Skinning: Shape Keys Override -------------------------

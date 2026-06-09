@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 
 from typing import List, Dict
+import numpy
 
 from ..migoto_io.data_model.dxgi_format import DXGIFormat
 from ..migoto_io.data_model.byte_buffer import ByteBuffer, BufferLayout, BufferSemantic, AbstractSemantic, Semantic
@@ -60,17 +61,26 @@ class ShapeKeys:
         ])
 
         shapekey_buffer = ByteBuffer(layout)
-        shapekey_buffer.extend(vertex_count)
+        zero_bytes = bytearray(vertex_count * DXGIFormat.R16G16B16_FLOAT.byte_width)
+        for semantic in shapekey_buffer.layout.semantics:
+            shapekey_buffer.data[semantic] = bytearray(zero_bytes)
+        shapekey_buffer.validate()
 
+        semantic_by_id = {semantic.abstract.index: semantic for semantic in shapekey_buffer.layout.semantics}
         for vertex_id in range(vertex_offset, vertex_offset + vertex_count):
-            indexed_vertex_shapekeys = self.indexed_shapekeys.get(vertex_id, None)
+            indexed_vertex_shapekeys = self.indexed_shapekeys.get(vertex_id)
+            if indexed_vertex_shapekeys is None:
+                continue
             element_id = vertex_id - vertex_offset
-            for semantic in shapekey_buffer.layout.semantics:
-                shapekey_id = semantic.abstract.index
-                if indexed_vertex_shapekeys is None or shapekey_id not in indexed_vertex_shapekeys:
-                    shapekey_buffer.get_element(element_id).set_value(semantic, [0, 0, 0])
-                else:
-                    shapekey_buffer.get_element(element_id).set_value(semantic, indexed_vertex_shapekeys[shapekey_id])
+            byte_offset = element_id * DXGIFormat.R16G16B16_FLOAT.byte_width
+            for shapekey_id, vertex_offsets in indexed_vertex_shapekeys.items():
+                semantic = semantic_by_id.get(shapekey_id)
+                if semantic is None:
+                    continue
+                shapekey_buffer.data[semantic][byte_offset:byte_offset + semantic.stride] = numpy.asarray(
+                    vertex_offsets,
+                    dtype=numpy.float16,
+                ).tobytes()
 
         return shapekey_buffer
 
@@ -97,15 +107,15 @@ class ShapeKeyBuilder:
             shapekey_id_offset = 0
 
             for entry in shapekey_data.entries:
-                cb_data = entry.shapekey_offset_buffer.get_values(AbstractSemantic(Semantic.RawData))
+                cb_data = entry.shapekey_offset_buffer.get_values(entry.shapekey_offset_buffer.layout.semantics[0])
                 batch_vertex_offset = cb_data[261]
 
                 if batch_vertex_offset > 0 and indexed_offsets[-1] != batch_vertex_offset:
                     raise ValueError(f'Invalid offset {batch_vertex_offset} for shapekey batch (last offset is {indexed_offsets[-1]})')
 
                 shapekey_offsets = cb_data[0:128]
-                vertex_ids = entry.shapekey_vertex_id_buffer.get_values(AbstractSemantic(Semantic.RawData))[batch_vertex_offset:]
-                vertex_offsets = entry.shapekey_vertex_offset_buffer.get_values(AbstractSemantic(Semantic.RawData))[batch_vertex_offset*6:]
+                vertex_ids = entry.shapekey_vertex_id_buffer.get_values(entry.shapekey_vertex_id_buffer.layout.semantics[0])[batch_vertex_offset:]
+                vertex_offsets = entry.shapekey_vertex_offset_buffer.get_values(entry.shapekey_vertex_offset_buffer.layout.semantics[0])[batch_vertex_offset*6:]
 
                 last_data_entry_id = shapekey_offsets[-1]
                 shapekey_count = 0

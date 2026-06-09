@@ -89,7 +89,7 @@ class DataModelWWMI(DataModel):
             texcoord_layout = buffers_format['TexCoord']
             existing_texcoord_count = len([
                 semantic for semantic in texcoord_layout.semantics
-                if semantic.abstract.enum == Semantic.TexCoord
+                if self.semantic_equal(semantic.abstract.enum, Semantic.TexCoord)
             ])
             mesh_uv_count = len(getattr(mesh, 'uv_layers', []))
             target_texcoord_count = min(max(existing_texcoord_count, mesh_uv_count), self.MAX_TEXCOORD_SLOTS)
@@ -156,7 +156,7 @@ class DataModelWWMI(DataModel):
             if buffer_name in excluded_buffers:
                 continue
             for semantic in buffer_layout.semantics:
-                if semantic.abstract.enum == Semantic.ShapeKey:
+                if self.semantic_equal(semantic.abstract.enum, Semantic.ShapeKey):
                     buffers[buffer_name] = NumpyBuffer(buffer_layout)
                     break
 

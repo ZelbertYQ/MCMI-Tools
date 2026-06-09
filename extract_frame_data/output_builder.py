@@ -47,11 +47,12 @@ class OutputBuilder:
 
     def __post_init__(self):
         self.objects = {}
+        data_hash_cache = {}
         for vb_hash, mesh_object in self.mesh_objects.items():
 
             shapekeys = self.shapekeys.get(mesh_object.shapekey_hash, ShapeKeys(offsets_hash=mesh_object.shapekey_hash or ''))
             
-            self.filter_textures(mesh_object)
+            self.filter_textures(mesh_object, data_hash_cache)
 
             self.objects[vb_hash] = ObjectData(
                 metadata=self.build_metadata(mesh_object, shapekeys),
@@ -66,7 +67,9 @@ class OutputBuilder:
                 shapekeys=shapekeys
             )
 
-    def filter_textures(self, mesh_object):
+    def filter_textures(self, mesh_object, data_hash_cache=None):
+        if data_hash_cache is None:
+            data_hash_cache = {}
 
         garbage_list = [
             '980666bd245e94c32ee0ed46435b122d41ef3b7c13f9e389eb4d56916ab7f611',  # Stars mask
@@ -114,10 +117,13 @@ class OutputBuilder:
                             continue
 
                 # Exclude known garbage textures
-                with open(texture.path, 'rb') as f:
-                    data_hash = hashlib.sha256(f.read()).hexdigest()
-                    if data_hash in garbage_list:
-                        continue
+                data_hash = data_hash_cache.get(texture.path)
+                if data_hash is None:
+                    with open(texture.path, 'rb') as f:
+                        data_hash = hashlib.sha256(f.read()).hexdigest()
+                    data_hash_cache[texture.path] = data_hash
+                if data_hash in garbage_list:
+                    continue
 
                 textures.append(texture)
 
