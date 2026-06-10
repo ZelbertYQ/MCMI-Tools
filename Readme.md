@@ -2,7 +2,7 @@
 
 MCMI Tools 是 [WWMI Tools](https://github.com/SpectrumQT/WWMI-Tools) 的修改版，用于《鸣潮》模组制作。它保留了原插件的导入、导出、提取和模板工作流，并针对中文用户、LOD、多形态贴图替换和新版 WWMI 帧分析数据做了实用增强。
 
-当前版本：`1.7.3.15`
+当前版本：`1.7.3.16`
 
 English documentation is available after the Chinese section.
 
@@ -131,7 +131,7 @@ https://github.com/ZelbertYQ/MCMI-Tools/releases
 版本 tag 应与 `bl_info["version"]` 对应，例如：
 
 ```text
-v1.7.3.15
+v1.7.3.16
 ```
 
 更新器下载的是 GitHub Release 自动提供的源码 zip，因此不需要额外上传更新资产。
@@ -148,7 +148,7 @@ v1.7.3.15
 
 MCMI Tools is a modified version of [WWMI Tools](https://github.com/SpectrumQT/WWMI-Tools) for Wuthering Waves modding. It keeps the original import, export, extraction and template workflows, and adds practical improvements for Chinese users, LOD workflows, texture replacement and recent WWMI frame-dump changes.
 
-Current version: `1.7.3.15`
+Current version: `1.7.3.16`
 
 ## Installation
 
@@ -275,7 +275,7 @@ https://github.com/ZelbertYQ/MCMI-Tools/releases
 Version tags should match `bl_info["version"]`, for example:
 
 ```text
-v1.7.3.15
+v1.7.3.16
 ```
 
 The updater downloads GitHub's release source zip, so no separate update asset is required.
