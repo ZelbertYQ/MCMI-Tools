@@ -246,6 +246,80 @@ Export behavior:
 
 Disable it when you manually edited texture overrides and only want to update mesh buffers or other generated sections.
 
+### Slot Mode
+
+Slot mode manages textures by `ps-t0` to `ps-t8` slots instead of only by hash.
+It is useful when you want to edit texture links directly in Blender and keep export behavior aligned with the slot graph.
+
+Modes:
+
+- `SLOT_SIMPLE`: one material configuration per component.
+- `SLOT_COMPLEX`: per-object material detection.
+
+How to use:
+
+1. Import the object first and make sure `ShaderTextureUsage.json` and `TextureFormat.json` exist in the object source folder.
+2. Set `Texture` to `SLOT_SIMPLE` or `SLOT_COMPLEX`.
+3. After import, the add-on builds slot-aware node groups and connects images to the matching `ps-t` sockets.
+4. Edit links manually in Blender if needed. Export uses the current node connections.
+5. Images stored under `Disabled-...` or `Disabled+...` folders are treated as disabled textures, but still stay in the slot system.
+6. Non-DDS images such as PNG, JPG or TGA are converted to DDS during export with `texconv.exe`.
+
+Disabled folder behavior:
+
+- Both `Disabled-xxx` and `Disabled+xxx` are recognized as disabled prefixes.
+- If the selected source path is already inside a `Disabled-...` folder, the importer still resolves it normally.
+- This lets you batch-enable or batch-disable textures outside Blender without breaking slot import.
+
+Drag-and-drop behavior:
+
+- Dragged images are loaded by Blender as external file references.
+- If the image is not DDS, export converts it to DDS.
+- Keep final replacement textures in the object source tree when possible, so export does not fall back to older dump textures.
+
+Right-click helper:
+
+- In the node editor, there is a helper to swap slot links between two image nodes.
+- It transfers the slot connections from one linked image node to the other and disconnects the original node.
+- This is useful when you want to move a linked slot setup from one texture to another quickly.
+
+### 插槽模式
+
+插槽模式会按 `ps-t0` 到 `ps-t8` 的槽位来管理贴图，而不是只按 hash 管理。
+它适合在 Blender 里直接调整贴图连接，并让导出结果跟着当前节点图走的场景。
+
+模式：
+
+- `SLOT_SIMPLE`：每个 Component 只取一套材质配置。
+- `SLOT_COMPLEX`：按每个对象分别识别材质。
+
+使用方法：
+
+1. 先导入对象，确保对象源文件夹中有 `ShaderTextureUsage.json` 和 `TextureFormat.json`。
+2. 在 `Texture` 里切换到 `SLOT_SIMPLE` 或 `SLOT_COMPLEX`。
+3. 导入后，插件会自动按槽位建立节点组，并把图像连到对应的 `ps-t` 输入。
+4. 你可以在 Blender 里手动拖图、改连线；导出时会按当前节点连接导出。
+5. 放在 `Disabled-...` 或 `Disabled+...` 文件夹里的贴图，会被识别成禁用贴图，但仍然保留在槽位系统中。
+6. 如果拖入的是 PNG、JPG、TGA 等非 DDS 图片，导出时会自动转成 DDS。
+
+`Disabled` 目录规则：
+
+- `Disabled-xxx` 和 `Disabled+xxx` 都会被识别为禁用前缀；
+- 如果你直接选中的路径本身就在 `Disabled-...` 文件夹里，插件也会正常解析；
+- 这样你可以在 Blender 外部批量启用或禁用贴图，而不用手工一张张断线。
+
+拖拽贴图时：
+
+- Blender 会把拖入的图片当作外部文件引用；
+- 只要不是 DDS，导出时就会转成 DDS；
+- 尽量把最终要替换的贴图放在对象源文件树里，避免导出时回退到旧的转储贴图。
+
+右键工具：
+
+- 在节点编辑器里，可以对两个图像节点使用“交换插槽链接”功能；
+- 它会把一个已连接图像节点上的槽位连接转移到另一个图像节点，并断开原图；
+- 适合快速把某套插槽关系从一张图换到另一张图上。
+
 ### Extracted Resource Collection
 
 Enable `Collect Extracted Resources` in debug settings to copy raw frame-dump resources used by the extracted object into an `ExtractResources` folder.
