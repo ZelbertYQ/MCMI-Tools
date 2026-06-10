@@ -503,7 +503,7 @@ if $mod_enabled
         run = CommandListOverrideSharedResources
         {%- if cfg.texture_mode == 'SLOT_SIMPLE' and merged_object.components[loop.index0].material %}
         {%- for node_group in merged_object.components[loop.index0].material.node_groups %}
-        if {{ node_group.shader_condition }} && {%- for input in node_group.inputs %} {{input.slot_var}} == {{input.filter_index}} && {%- endfor %} 1
+        if {%- for input in node_group.inputs %} {{input.slot_var}} == {{input.filter_index}} && {%- endfor %} 1
             {%- for input in node_group.inputs %}
             {{input.slot}} = ref ResourceTexture{{ input.resource_name }}
             {%- endfor %}
@@ -516,7 +516,7 @@ if $mod_enabled
         if {{ formatter.format_ini_drawvar(obj.name) }}
             {%- if cfg.texture_mode == 'SLOT_COMPLEX' and obj.material %}
             {%- for node_group in obj.material.node_groups %}
-            if {{ node_group.shader_condition }} && {%- for input in node_group.inputs %} {{input.slot_var}} == {{input.filter_index}} && {%- endfor %} 1
+            if {%- for input in node_group.inputs %} {{input.slot_var}} == {{input.filter_index}} && {%- endfor %} 1
                 {%- for input in node_group.inputs %}
                 {{input.slot}} = ref ResourceTexture{{ input.resource_name }}
                 {%- endfor %}
@@ -528,7 +528,7 @@ if $mod_enabled
 		{% else -%}
         {%- if cfg.texture_mode == 'SLOT_COMPLEX' and obj.material %}
         {%- for node_group in obj.material.node_groups %}
-        if {{ node_group.shader_condition }} && {%- for input in node_group.inputs %} {{input.slot_var}} == {{input.filter_index}} && {%- endfor %} 1
+        if {%- for input in node_group.inputs %} {{input.slot_var}} == {{input.filter_index}} && {%- endfor %} 1
             {%- for input in node_group.inputs %}
             {{input.slot}} = ref ResourceTexture{{ input.resource_name }}
             {%- endfor %}
@@ -559,12 +559,6 @@ endif
 ; Shading: Textures -------------------------
 
 {%- if (cfg.texture_mode == 'SLOT_SIMPLE' or cfg.texture_mode == 'SLOT_COMPLEX') and slot_textures %}
-{%- for marker in slot_shader_markers %}
-[ShaderOverrideMCMISlot{{ marker.shader_type|upper }}{{ marker.shader_hash }}]
-hash = {{ marker.shader_hash }}
-filter_index = {{ marker.filter_index }}
-{%- endfor %}
-
 {%- for component in merged_object.components %}
 {%- set component_idx = loop.index0 %}
 {%- for slot_hash in component.slot_hashes %}
@@ -574,7 +568,7 @@ hash = {{ slot_hash.hash }}
 match_first_index = {{ extracted_object.components[component_idx].index_offset }}
 match_index_count = {{ extracted_object.components[component_idx].index_count }}
 match_priority = 200
-if $object_detected && $mod_enabled && $mcmi_slot_probe == {{ slot_hash.slot_id }} && {{ slot_hash.shader_condition }}
+if $object_detected && $mod_enabled && $mcmi_slot_probe == {{ slot_hash.slot_id }}
     {{ slot_hash.slot_var }} = {{ slot_hash.filter_index }}
 endif
 {%- endfor %}

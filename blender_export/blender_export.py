@@ -53,48 +53,11 @@ def _slot_id(slot_name):
     return int(match.group(1)) if match else -1
 
 
-def _shader_filter_index(shader_hash, shader_type):
-    if not shader_hash:
-        return 0.0
-    prefix = '85' if shader_type == 'vs' else '86'
-    value = int(shader_hash[:6], 16) % 900000 + 100000
-    return float(f"{prefix}.{value:06d}")
-
-
-def _shader_condition_pair(vs_value, ps_value):
-    return f"(vs == {_shader_filter_index(vs_value, 'vs')} && ps == {_shader_filter_index(ps_value, 'ps')})"
-
-
-def _build_shader_condition(shader_pairs):
-    seen = set()
-    parts = []
-    for vs_value, ps_value in shader_pairs:
-        key = (vs_value, ps_value)
-        if key in seen:
-            continue
-        seen.add(key)
-        parts.append(_shader_condition_pair(vs_value, ps_value))
-    if not parts:
-        return ''
-    if len(parts) == 1:
-        return parts[0]
-    return '(' + ' || '.join(parts) + ')'
-
-
 def _sanitize_resource_token(value, fallback='texture'):
     value = str(value or '').strip()
     value = re.sub(r'[^a-zA-Z0-9_\-]', '_', value)
     value = value.strip('_-')
     return value or fallback
-
-
-def _merge_shader_pair_entry(entry, vs_value, ps_value):
-    pair = (vs_value, ps_value)
-    shader_pairs = entry.setdefault('shader_pairs', [])
-    if pair not in shader_pairs:
-        shader_pairs.append(pair)
-    entry['shader_condition'] = _build_shader_condition(shader_pairs)
-    return entry
 
 
 def _is_path_inside(path_text, folder: Path):
@@ -147,48 +110,6 @@ def _ensure_unique_slot_texture_name(base_filename, base_resource, used_textures
 
     used_textures[filename] = instance_key
     return filename, resource
-
-
-def _collect_slot_shader_markers(merged_object):
-    markers = []
-    seen = set()
-
-    for component in merged_object.components:
-        for source in (getattr(component, 'material', None),):
-            if not source:
-                continue
-            for node_group in source.get('node_groups', []):
-                for shader_type, shader_hash in (('vs', node_group.get('vs')), ('ps', node_group.get('ps'))):
-                    if not shader_hash:
-                        continue
-                    key = (shader_type, shader_hash)
-                    if key in seen:
-                        continue
-                    seen.add(key)
-                    markers.append({
-                        'shader_type': shader_type,
-                        'shader_hash': shader_hash,
-                        'filter_index': node_group.get(f'{shader_type}_filter_index', 0.0),
-                    })
-        for temp_object in component.objects:
-            source = getattr(temp_object, 'material', None)
-            if not source:
-                continue
-            for node_group in source.get('node_groups', []):
-                for shader_type, shader_hash in (('vs', node_group.get('vs')), ('ps', node_group.get('ps'))):
-                    if not shader_hash:
-                        continue
-                    key = (shader_type, shader_hash)
-                    if key in seen:
-                        continue
-                    seen.add(key)
-                    markers.append({
-                        'shader_type': shader_type,
-                        'shader_hash': shader_hash,
-                        'filter_index': node_group.get(f'{shader_type}_filter_index', 0.0),
-                    })
-
-    return markers
 
 
 class ObjectMergerSlot(ObjectMerger):
@@ -284,11 +205,7 @@ class ObjectMergerSlot(ObjectMerger):
                             'name': node.node_tree.name,
                             'vs': vs_value,
                             'ps': ps_value,
-                            'vs_filter_index': _shader_filter_index(vs_value, 'vs'),
-                            'ps_filter_index': _shader_filter_index(ps_value, 'ps'),
-                            'shader_condition': _build_shader_condition([(vs_value, ps_value)]),
                             'inputs': [],
-                            'shader_pairs': [(vs_value, ps_value)],
                         }
 
                         for input_socket in node.inputs:
@@ -380,9 +297,7 @@ class ObjectMergerSlot(ObjectMerger):
 
                             if source_hash and match_format_enum is not None:
                                 slot_hash_key = (input_name, source_hash)
-                                if slot_hash_key in component_slot_hashes:
-                                    _merge_shader_pair_entry(component_slot_hashes[slot_hash_key], vs_value, ps_value)
-                                else:
+                                if slot_hash_key not in component_slot_hashes:
                                     component_slot_hashes[slot_hash_key] = {
                                         'slot': input_name,
                                         'slot_id': _slot_id(input_name),
@@ -390,8 +305,6 @@ class ObjectMergerSlot(ObjectMerger):
                                         'hash': source_hash,
                                         'match_format': match_format_enum,
                                         'filter_index': source_filter_index,
-                                        'shader_pairs': [(vs_value, ps_value)],
-                                        'shader_condition': _build_shader_condition([(vs_value, ps_value)]),
                                     }
 
                             if not source_hash and match_format_enum is not None and match_format_enum.value not in component_match_formats:
@@ -418,10 +331,12 @@ class ObjectMergerSlot(ObjectMerger):
                                     'component_id': component_id,
                                     'instance_key': input_info['instance_key'],
                                     'shader_pairs': [(vs_value, ps_value)],
-                                    'shader_condition': _build_shader_condition([(vs_value, ps_value)]),
                                 }
                             else:
-                                _merge_shader_pair_entry(all_images[dds_export_name], vs_value, ps_value)
+                                shader_pairs = all_images[dds_export_name].setdefault('shader_pairs', [])
+                                shader_pair = (vs_value, ps_value)
+                                if shader_pair not in shader_pairs:
+                                    shader_pairs.append(shader_pair)
 
                         if node_group_info['inputs']:
                             material_info['node_groups'].append(node_group_info)
@@ -682,7 +597,6 @@ class ModExporter:
     
     def build_mod_ini(self):
         start_time = time.time()
-        slot_shader_markers = _collect_slot_shader_markers(self.merged_object) if self.cfg.texture_mode in ('SLOT_SIMPLE', 'SLOT_COMPLEX') else None
 
         ini_maker = IniMaker(
             cfg=self.cfg,
@@ -703,7 +617,6 @@ class ModExporter:
             skeleton_scale=self.cfg.skeleton_scale,
             unrestricted_custom_shape_keys=self.cfg.unrestricted_custom_shape_keys,
             slot_textures=self.slot_textures if self.cfg.texture_mode in ('SLOT_SIMPLE', 'SLOT_COMPLEX') else None,
-            slot_shader_markers=slot_shader_markers,
         )
 
         self.ini = ini_maker
